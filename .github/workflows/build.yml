@@ -25,7 +25,7 @@ jobs:
           CP=$(ls validator/libs/*.jar | tr '\n' ':')
           javac -nowarn -d /tmp/validator -cp "$CP" $(find validator/src/main/java -name '*.java')
           java -cp "/tmp/validator:$CP" com.samsung.watchface.DWFValidationApplication 2 \
-            "$GITHUB_WORKSPACE/app/src/main/res/raw/watchface.xml" | tee /tmp/validator.log
+            "$GITHUB_WORKSPACE/app/src/main/res/raw/watchface.xml" 2>&1 | tee /tmp/validator.log
           grep -q PASSED /tmp/validator.log
 
       - name: Build APK

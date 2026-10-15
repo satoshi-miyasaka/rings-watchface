@@ -1,0 +1,37 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Validate watch face XML (Watch Face Format v2)
+        run: |
+          git clone --depth 1 https://github.com/google/watchface.git /tmp/wff
+          cd /tmp/wff/third_party/wff/specification
+          mkdir -p /tmp/validator
+          (cd documents && zip -qr /tmp/validator/docs.zip .)
+          CP=$(ls validator/libs/*.jar | tr '\n' ':')
+          javac -nowarn -d /tmp/validator -cp "$CP" $(find validator/src/main/java -name '*.java')
+          java -cp "/tmp/validator:$CP" com.samsung.watchface.DWFValidationApplication 2 \
+            "$GITHUB_WORKSPACE/app/src/main/res/raw/watchface.xml" | tee /tmp/validator.log
+          grep -q PASSED /tmp/validator.log
+
+      - name: Build APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rings-watchface-debug
+          path: app/build/outputs/apk/debug/*.apk

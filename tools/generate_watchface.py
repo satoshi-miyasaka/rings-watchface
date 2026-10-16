@@ -270,8 +270,12 @@ def companion_slots():
     week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
     week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
 
+    # TEMPORARY: show what the face reads for the timer, to debug the minute ring.
+    debug = text("timerDebug", 75, 128, 300, 28, 14, "FFFFD166",
+                 template("T=%s L=%s on=%s", T, left, f"{T} &lt; {NO_TIMER}"), weight="MEDIUM")
+
     return (
-        data_slot(1, "ring_hour", "HourRingDataSource", hour + timer)
+        data_slot(1, "ring_hour", "HourRingDataSource", hour + timer + debug)
         + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
         + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
     )

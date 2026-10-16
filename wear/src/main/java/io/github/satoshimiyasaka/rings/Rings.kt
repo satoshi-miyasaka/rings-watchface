@@ -27,6 +27,10 @@ const val KEY_EVENTS = "events"
  *   coming 60 minutes. Bits 0-23 ride on the hour source's target, bits 24-59
  *   on the minute source.
  * - A target is never 0, so each one carries its bits plus one.
+ * - Past view: the same layout, but each segment means its latest occurrence
+ *   that has already started, so the rings show the past 12 hours, 60 minutes
+ *   and 7 days. Bit 12 of the minute source's target (minus one) tells the
+ *   face which view it is drawing.
  *
  * The watch face side lives in tools/generate_watchface.py.
  */
@@ -34,6 +38,7 @@ object Rings {
     const val HOUR_SEGMENTS = 24
     const val WEEK_BLOCKS = 12
     const val MINUTE_SEGMENTS = 60
+    const val PAST_FLAG = 1 shl 12
 
     private const val HALF_HOUR_MIN = 30L
     private const val BLOCK_MIN = 120L
@@ -48,15 +53,16 @@ object Rings {
         return false
     }
 
-    fun hourMask(events: LongArray, now: Long, zone: ZoneId): Int {
+    fun hourMask(events: LongArray, now: Long, zone: ZoneId, past: Boolean = false): Int {
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         var mask = 0
         for (i in 0 until HOUR_SEGMENTS) {
             // Candidates at this dial position: yesterday evening through tomorrow.
-            for (lap in -2..3) {
+            val laps = if (past) (3 downTo -2) else (-2..3)
+            for (lap in laps) {
                 val start = at(today, lap * 12 * 60L + i * HALF_HOUR_MIN, zone)
                 val end = start.plusMinutes(HALF_HOUR_MIN)
-                if (end.toEpochMilli() <= now) continue
+                if (if (past) start.toEpochMilli() > now else end.toEpochMilli() <= now) continue
                 if (busy(events, start.toEpochMilli(), end.toEpochMilli())) mask = mask or (1 shl i)
                 break
             }
@@ -64,27 +70,36 @@ object Rings {
         return mask
     }
 
-    fun minuteMask(events: LongArray, now: Long, zone: ZoneId): Long {
+    fun minuteMask(events: LongArray, now: Long, zone: ZoneId, past: Boolean = false): Long {
         val hour = Instant.ofEpochMilli(now).atZone(zone).withMinute(0).withSecond(0).withNano(0)
         var mask = 0L
         for (k in 0 until MINUTE_SEGMENTS) {
             var start = hour.plusMinutes(k.toLong())
-            if (start.plusMinutes(1).toEpochMilli() <= now) start = start.plusHours(1)
+            if (past) {
+                if (start.toEpochMilli() > now) start = start.minusHours(1)
+            } else if (start.plusMinutes(1).toEpochMilli() <= now) {
+                start = start.plusHours(1)
+            }
             if (busy(events, start.toEpochMilli(), start.plusMinutes(1).toEpochMilli())) mask = mask or (1L shl k)
         }
         return mask
     }
 
     /** One 12-bit mask per weekday, Sunday first. */
-    fun weekMasks(events: LongArray, now: Long, zone: ZoneId): IntArray {
+    fun weekMasks(events: LongArray, now: Long, zone: ZoneId, past: Boolean = false): IntArray {
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         val todayIndex = today.dayOfWeek.value % 7 // Monday = 1 ... Sunday = 0
         return IntArray(7) { day ->
-            val date = today.plusDays(((day - todayIndex + 7) % 7).toLong())
+            val date = if (past) today.minusDays(((todayIndex - day + 7) % 7).toLong())
+            else today.plusDays(((day - todayIndex + 7) % 7).toLong())
             var mask = 0
             for (b in 0 until WEEK_BLOCKS) {
                 var start = at(date, b * BLOCK_MIN, zone)
-                if (start.plusMinutes(BLOCK_MIN).toEpochMilli() <= now) start = start.plusDays(7)
+                if (past) {
+                    if (start.toEpochMilli() > now) start = start.minusDays(7)
+                } else if (start.plusMinutes(BLOCK_MIN).toEpochMilli() <= now) {
+                    start = start.plusDays(7)
+                }
                 val end = start.plusMinutes(BLOCK_MIN)
                 if (busy(events, start.toEpochMilli(), end.toEpochMilli())) mask = mask or (1 shl b)
             }
@@ -93,13 +108,14 @@ object Rings {
     }
 
     /** Values for the four data sources: (value, target) each. */
-    fun hourRing(events: LongArray, now: Long, zone: ZoneId) =
-        hourMask(events, now, zone).toFloat() to
-            ((minuteMask(events, now, zone) and 0xFFFFFF).toInt() + 1).toFloat()
+    fun hourRing(events: LongArray, now: Long, zone: ZoneId, past: Boolean = false) =
+        hourMask(events, now, zone, past).toFloat() to
+            ((minuteMask(events, now, zone, past) and 0xFFFFFF).toInt() + 1).toFloat()
 
-    fun minuteRing(events: LongArray, now: Long, zone: ZoneId): Pair<Float, Float> {
-        val m = minuteMask(events, now, zone)
-        return ((m shr 24) and 0xFFFFFF).toFloat() to (((m shr 48) and 0xFFF).toInt() + 1).toFloat()
+    fun minuteRing(events: LongArray, now: Long, zone: ZoneId, past: Boolean = false): Pair<Float, Float> {
+        val m = minuteMask(events, now, zone, past)
+        val high = ((m shr 48) and 0xFFF).toInt() or (if (past) PAST_FLAG else 0)
+        return ((m shr 24) and 0xFFFFFF).toFloat() to (high + 1).toFloat()
     }
 
     fun weekA(m: IntArray) =

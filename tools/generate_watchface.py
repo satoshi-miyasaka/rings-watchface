@@ -210,17 +210,23 @@ def bit(field, i):
 
 
 def data_slot(slot_id, name, source, body):
-    """A full-screen slot that only draws.
+    """A full-screen slot that only draws, fixed to one of the companion's sources.
 
     The bounding box has to cover the whole face: the runtime clips what a
     complication draws to its bounding box, and the lit segments sit on the rings.
-    Keep these slots and the next-event slot in the same order in the scene:
-    the watch saves each slot's data source by its position, so reordering
-    hands every slot another slot's data. Add new slots at the end.
+    It also means a tap anywhere on the face reaches these slots, which is how
+    the face switches to the past view.
+
+    The slots are not customizable, so they stay out of the watch face editor.
+
+    Do not add, remove or reorder slots once the closed test has started. The
+    watch saves each slot's data source by its position when the face is
+    added: reordering hands every slot another slot's data, and a slot added
+    later stays empty on watches that update until the face is added again.
     """
     return (
         f'<ComplicationSlot slotId="{slot_id}" name="{name}" displayName="@string/{name}" '
-        f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="TRUE">'
+        f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="FALSE">'
         f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="GOAL_PROGRESS" '
         f'primaryProvider="{COMPANION}{source}" primaryProviderType="GOAL_PROGRESS"/>'
         f'<BoundingBox x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
@@ -250,6 +256,9 @@ def companion_slots():
     minutes_low = "".join(minute(k, f"({T} - 1)", 0) for k in range(24))
     minutes_high = "".join(minute(k, V, 24) for k in range(24, 48)) + "".join(
         minute(k, f"({T} - 1)", 48) for k in range(48, 60))
+    # Bit 12 of the minute slot's target marks the past view.
+    past_label = lit_if("pastView", bit(f"({T} - 1)", 12),
+                        text("pastLabel", 155, 128, 140, 26, 15, "FFE8EBF0", "◀ これまで"))
 
     # Week ring: 7 weekdays x 12 two-hour blocks, 24 bits per field.
     seg = 360 / 7
@@ -272,7 +281,7 @@ def companion_slots():
         data_slot(1, "ring_hour", "HourRingDataSource", hour + minutes_low)
         + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
         + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
-    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high)
+    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high + past_label)
 
 
 def watchface_xml():

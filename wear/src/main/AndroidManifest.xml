@@ -24,6 +24,10 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".TapReceiver"
+            android:exported="false" />
+
         <!-- Four data sources feed the Rings watch face. Each sends packed bits in
              a GOAL_PROGRESS value; see Rings.kt for the layout. -->
         <service

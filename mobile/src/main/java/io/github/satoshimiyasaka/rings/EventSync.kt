@@ -17,13 +17,14 @@ const val KEY_EVENTS = "events"
 const val KEY_SYNCED_AT = "synced_at"
 
 /**
- * Reads the coming week of events from the phone's calendars and sends their
- * start and end times to the watch. Titles and other details stay on the phone.
+ * Reads the past and the coming week of events from the phone's calendars and
+ * sends their start and end times to the watch. Titles and other details stay on the phone.
  */
 object EventSync {
 
-    // The watch's week ring covers 7 days ahead; one extra day absorbs time
-    // zone differences and the gap until the next sync.
+    // The watch's week ring covers 7 days ahead, or 7 days back in the past
+    // view; one extra day absorbs time zone differences and the gap until the
+    // next sync.
     private val WINDOW_MS = TimeUnit.DAYS.toMillis(8)
 
     fun hasPermission(context: Context) =
@@ -34,7 +35,7 @@ object EventSync {
     fun readEvents(context: Context, now: Long = System.currentTimeMillis()): LongArray {
         if (!hasPermission(context)) return LongArray(0)
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
-            ContentUris.appendId(it, now)
+            ContentUris.appendId(it, now - WINDOW_MS)
             ContentUris.appendId(it, now + WINDOW_MS)
         }.build()
         val projection = arrayOf(
@@ -52,7 +53,7 @@ object EventSync {
             while (c.moveToNext()) {
                 val begin = c.getLong(0)
                 val end = c.getLong(1)
-                if (end > now && end > begin) {
+                if (end > begin) {
                     out += begin
                     out += end
                 }

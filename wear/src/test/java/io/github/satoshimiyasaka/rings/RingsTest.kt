@@ -95,4 +95,50 @@ class RingsTest {
         assertEquals(16_777_215f, mid) // bits 24-47
         assertEquals(4096f, high) // bits 48-59, plus one
     }
+
+    @Test
+    fun pastHourRingShowsThePastTwelveHours() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 10, 0), ms(2026, 10, 16, 10, 30), // this morning: bit 20
+            ms(2026, 10, 16, 1, 0), ms(2026, 10, 16, 1, 30), // 1 o'clock last night: bit 2
+            ms(2026, 10, 15, 23, 30), ms(2026, 10, 16, 0, 0), // 11:30 last night: bit 23
+            ms(2026, 10, 16, 13, 0), ms(2026, 10, 16, 14, 0), // still to come: not shown
+        )
+        val mask = Rings.hourMask(events, now, tokyo, past = true)
+        assertEquals((1 shl 20) or (1 shl 2) or (1 shl 23), mask)
+    }
+
+    @Test
+    fun pastMinuteRingShowsThePastSixtyMinutes() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 11, 5), ms(2026, 10, 16, 11, 7), // minutes 5-6
+            ms(2026, 10, 16, 10, 50), ms(2026, 10, 16, 10, 52), // last lap: minutes 50-51
+            ms(2026, 10, 16, 11, 9), ms(2026, 10, 16, 11, 12), // 9, and 10 which is under way
+            ms(2026, 10, 16, 11, 30), ms(2026, 10, 16, 11, 31), // still to come: off
+        )
+        val expected = (1L shl 5) or (1L shl 6) or (1L shl 9) or (1L shl 10) or (1L shl 50) or (1L shl 51)
+        assertEquals(expected, Rings.minuteMask(events, now, tokyo, past = true))
+    }
+
+    @Test
+    fun pastWeekRingShowsThePastSevenDays() {
+        val events = longArrayOf(
+            ms(2026, 10, 15, 10, 0), ms(2026, 10, 15, 11, 0), // yesterday 10:00: Thursday block 5
+            ms(2026, 10, 16, 6, 0), ms(2026, 10, 16, 7, 0), // this morning: Friday block 3
+            ms(2026, 10, 9, 14, 0), ms(2026, 10, 9, 15, 0), // last Friday 14:00: block 7 has not come today
+            ms(2026, 10, 19, 10, 0), ms(2026, 10, 19, 11, 0), // next Monday: not shown
+        )
+        val m = Rings.weekMasks(events, now, tokyo, past = true)
+        assertEquals(1 shl 5, m[4])
+        assertEquals((1 shl 3) or (1 shl 7), m[5])
+        assertEquals(0, m[0] or m[1] or m[2] or m[3] or m[6])
+    }
+
+    @Test
+    fun minuteSourceMarksThePastView() {
+        val (_, coming) = Rings.minuteRing(LongArray(0), now, tokyo)
+        val (_, past) = Rings.minuteRing(LongArray(0), now, tokyo, past = true)
+        assertEquals(1f, coming)
+        assertEquals((Rings.PAST_FLAG + 1).toFloat(), past)
+    }
 }

@@ -240,17 +240,18 @@ def companion_slots():
                part_draw(f"hourSeg{i}", arc(hour_r, i * 15, (i + 1) * 15, LIT_ALPHA + hour_col)))
         for i in range(24)
     )
-    # Timer on the minute ring: from now until the end second carried in the target.
+    # Timer on the minute ring: 60 one-minute segments, lit from the current
+    # minute up to the end second carried in the target. Conditions are nested
+    # rather than joined with && and the angles are fixed, because the runtime
+    # did not evaluate either of those as expected.
     left = f"((({T} - 1) - [SECONDS_IN_DAY] + 86400) % 86400)"
-    start = "(([SECONDS_IN_DAY] % 3600) / 10)"
-    timer_arc = (
-        f'<Arc centerX="{C}" centerY="{C}" width="{2 * min_r}" height="{2 * min_r}" startAngle="0" endAngle="0">'
-        f'<Stroke color="#{LIT_ALPHA}{min_col}" thickness="{RING_WIDTH}" cap="BUTT"/>'
-        f'<Transform target="startAngle" value="{start}"/>'
-        f'<Transform target="endAngle" value="{start} + clamp({left} / 10, 0, 359.9)"/>'
-        "</Arc>"
+    minutes = "".join(
+        lit_if(f"timerMin{k}",
+               f"((({k * 60 + 59}) - ([SECONDS_IN_DAY] % 3600) + 3600) % 3600) < {left} + 59",
+               part_draw(f"timerSeg{k}", arc(min_r, k * 6, (k + 1) * 6, LIT_ALPHA + min_col)))
+        for k in range(60)
     )
-    timer = lit_if("timerOn", f"{T} < {NO_TIMER} && {left} < 43200", part_draw("timer", timer_arc))
+    timer = lit_if("timerOn", f"{T} < {NO_TIMER}", lit_if("timerNear", f"{left} < 43200", minutes))
 
     # Week ring: 7 weekdays x 12 two-hour blocks, 24 bits per field.
     seg = 360 / 7

@@ -26,9 +26,14 @@ abstract class RingDataSource : SuspendingComplicationDataSourceService() {
     override fun getPreviewData(type: ComplicationType): ComplicationData? =
         if (type == ComplicationType.GOAL_PROGRESS) data(0f, 1f) else null
 
-    private fun data(value: Float, target: Float) =
-        GoalProgressComplicationData.Builder(value, target, PlainComplicationText.Builder(label).build())
+    // GOAL_PROGRESS data must carry a text, title or image; the watch face
+    // ignores it and only reads the two numbers.
+    private fun data(value: Float, target: Float): ComplicationData {
+        val text = PlainComplicationText.Builder(label).build()
+        return GoalProgressComplicationData.Builder(value, target, text)
+            .setText(text)
             .build()
+    }
 }
 
 class HourRingDataSource : RingDataSource() {

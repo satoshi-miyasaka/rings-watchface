@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rings</string>
+    <string name="intro">7日先までの予定を時計の Rings 文字盤に送ります。予定の中身は送らず、開始と終了の時刻だけを送ります。</string>
+    <string name="grant">カレンダーへのアクセスを許可</string>
+    <string name="sync_now">今すぐ時計に送る</string>
+    <string name="status_need_permission">カレンダーへのアクセスが必要です。</string>
+    <string name="status_waiting">送信の準備ができました。</string>
+    <string name="status_synced">%1$s に %2$d 件の予定を送りました。</string>
+</resources>

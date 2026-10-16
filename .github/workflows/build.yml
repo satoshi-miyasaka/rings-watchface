@@ -28,10 +28,20 @@ jobs:
             "$GITHUB_WORKSPACE/app/src/main/res/raw/watchface.xml" 2>&1 | tee /tmp/validator.log
           grep -q PASSED /tmp/validator.log
 
-      - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build APKs and run unit tests
+        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
           name: rings-watchface-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rings-wear-debug
+          path: wear/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rings-phone-debug
+          path: mobile/build/outputs/apk/debug/*.apk

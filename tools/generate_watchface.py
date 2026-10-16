@@ -216,7 +216,7 @@ def data_slot(slot_id, name, source, box, body):
     return (
         f'<ComplicationSlot slotId="{slot_id}" name="{name}" displayName="@string/{name}" '
         f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="TRUE">'
-        f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="EMPTY" '
+        f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="GOAL_PROGRESS" '
         f'primaryProvider="{COMPANION}{source}" primaryProviderType="GOAL_PROGRESS"/>'
         f'<BoundingBox x="{x}" y="{y}" width="40" height="40"/>'
         '<Variant mode="AMBIENT" target="alpha" value="110"/>'

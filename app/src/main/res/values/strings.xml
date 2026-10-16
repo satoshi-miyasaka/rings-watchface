@@ -2,7 +2,8 @@
 <resources>
     <string name="app_name">Rings Watch Face</string>
     <string name="next_event">次の予定</string>
-    <string name="ring_hour">時リングとタイマー (Rings アプリ)</string>
+    <string name="ring_hour">時のリングと分のリング 0〜23分 (Rings アプリ)</string>
     <string name="ring_week_a">週の予定 日〜水 (Rings アプリ)</string>
     <string name="ring_week_b">週の予定 木〜土 (Rings アプリ)</string>
+    <string name="ring_minute">分のリング 24〜59分 (Rings アプリ)</string>
 </resources>

@@ -1,28 +1,24 @@
 package io.github.satoshimiyasaka.rings
 
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.app.NotificationManagerCompat
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
 
-/** A small timer whose remaining time shows on the watch face's minute ring. */
-class TimerActivity : ComponentActivity() {
+/** Shows whether the minute ring can follow the Clock timer, and opens the setting. */
+class SetupActivity : ComponentActivity() {
 
-    private lateinit var remaining: TextView
-    private val handler = Handler(Looper.getMainLooper())
-    private val tick = object : Runnable {
-        override fun run() {
-            render()
-            handler.postDelayed(this, 1000)
-        }
-    }
+    private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,24 +28,14 @@ class TimerActivity : ComponentActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(pad, pad, pad, pad)
         }
-        remaining = TextView(this).apply {
-            textSize = 22f
+        status = TextView(this).apply {
+            textSize = 15f
             gravity = Gravity.CENTER
         }
-        column.addView(remaining)
-        for (row in listOf(listOf(1, 3), listOf(5, 10))) {
-            val line = LinearLayout(this).apply { gravity = Gravity.CENTER }
-            for (m in row) {
-                line.addView(Button(this).apply {
-                    text = "+${m}分"
-                    setOnClickListener { TimerReceiver.add(this@TimerActivity, m); render() }
-                })
-            }
-            column.addView(line)
-        }
+        column.addView(status)
         column.addView(Button(this).apply {
-            setText(R.string.timer_cancel)
-            setOnClickListener { TimerReceiver.cancel(this@TimerActivity); render() }
+            setText(R.string.setup_open)
+            setOnClickListener { openSettings() }
         })
         setContentView(ScrollView(this).apply { addView(column) })
         fetchLatestEvents()
@@ -57,21 +43,23 @@ class TimerActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        handler.post(tick)
+        val granted = packageName in NotificationManagerCompat.getEnabledListenerPackages(this)
+        status.setText(if (granted) R.string.setup_on else R.string.setup_off)
     }
 
-    override fun onPause() {
-        handler.removeCallbacks(tick)
-        super.onPause()
-    }
-
-    private fun render() {
-        val left = (Store.timerEnd(this) - System.currentTimeMillis()) / 1000
-        remaining.text = if (left <= 0) {
-            getString(R.string.timer_idle)
-        } else {
-            getString(R.string.timer_left, (left / 60).toInt(), (left % 60).toInt())
+    private fun openSettings() {
+        val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+            ComponentName(this, ClockTimerListener::class.java).flattenToString(),
+        )
+        for (intent in listOf(detail, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: ActivityNotFoundException) {
+            }
         }
+        status.setText(R.string.setup_no_settings)
     }
 
     /** Picks up events the phone sent before this app was installed. */

@@ -8,7 +8,7 @@ Watch Face Format (WFF) で作り、Google Play で公開する予定です。
 
 - `app/src/main/res/raw/watchface.xml` … ウォッチフェイス本体(WFF v2、Wear OS 5 以降)
 - `mobile/` … スマホアプリ。7日先までの予定の開始・終了時刻を時計に送ります(タイトルは送りません)
-- `wear/` … 時計アプリ。受け取った予定とタイマーを数値にまとめ、コンプリケーションとして文字盤に渡します。数値の詰め方は `wear/src/main/java/io/github/satoshimiyasaka/rings/Rings.kt` に書いています
+- `wear/` … 時計アプリ。受け取った予定と、時計アプリ(標準)のタイマーを数値にまとめ、コンプリケーションとして文字盤に渡します。数値の詰め方は `wear/src/main/java/io/github/satoshimiyasaka/rings/Rings.kt` に書いています
 - `tools/generate_watchface.py` … 上の XML と画像を生成するスクリプト。リングの寸法・色・祝日はここで変更します
 - 祝日は 2026〜2030 年の日本の祝日を書き込んでいます。`HOLIDAY_YEARS` を延ばして再生成してください
 
@@ -28,7 +28,7 @@ python3 tools/generate_watchface.py
 連携アプリを入れると、次の表示が加わります。
 
 - 時リング:今から12時間先までの予定がある30分区間が光る
-- 分リング:Rings タイマーの残り時間が光る(時計のアプリ一覧の「Rings タイマー」から使います)
+- 分リング:時計の標準アプリ「タイマー」の残り時間が光る。タイマーの通知から終了時刻を読むので、時計のアプリ一覧の「Rings」を開いて通知へのアクセスを許可します(設定画面が無い場合は `adb shell cmd notification allow_listener io.github.satoshimiyasaka.rings/io.github.satoshimiyasaka.rings.ClockTimerListener`)
 - 週の予定リング:今から7日先までの予定がある2時間区間が光る
 
 入れる順番は、スマホアプリ、時計アプリ、文字盤の順です。文字盤を先に入れていた場合は、時計アプリを入れた後に文字盤を選び直してください。

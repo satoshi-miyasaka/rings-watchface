@@ -210,15 +210,19 @@ def bit(field, i):
     return f"floor({field} / {2 ** i}) % 2 == 1"
 
 
-def data_slot(slot_id, name, source, box, body):
-    """A full-screen slot that only draws; the box is where the editor shows it."""
-    x, y = (int(v) for v in box)
+def data_slot(slot_id, name, source, body):
+    """A full-screen slot that only draws.
+
+    The bounding box has to cover the whole face: the runtime clips what a
+    complication draws to its bounding box, and the lit segments sit on the rings.
+    The next-event slot comes before these in the scene so it keeps its taps.
+    """
     return (
         f'<ComplicationSlot slotId="{slot_id}" name="{name}" displayName="@string/{name}" '
         f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="TRUE">'
         f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="GOAL_PROGRESS" '
         f'primaryProvider="{COMPANION}{source}" primaryProviderType="GOAL_PROGRESS"/>'
-        f'<BoundingBox x="{x}" y="{y}" width="40" height="40"/>'
+        f'<BoundingBox x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
         '<Variant mode="AMBIENT" target="alpha" value="110"/>'
         f'<Complication type="GOAL_PROGRESS">{body}</Complication>'
         "</ComplicationSlot>"
@@ -266,9 +270,9 @@ def companion_slots():
     week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
 
     return (
-        data_slot(1, "ring_hour", "HourRingDataSource", (C - hour_r - 20, C - 20), hour + timer)
-        + data_slot(2, "ring_week_a", "WeekADataSource", (C - week_r - 20, C + 40), week_a)
-        + data_slot(3, "ring_week_b", "WeekBDataSource", (C + week_r - 20, C + 40), week_b)
+        data_slot(1, "ring_hour", "HourRingDataSource", hour + timer)
+        + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
+        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
     )
 
 
@@ -334,13 +338,13 @@ def watchface_xml():
       {part_draw("weekend", weekend)}
       {holiday_conditions()}
     </Group>
+    {complication}
     {companion_slots()}
     {part_draw("slits", all_slits)}
     <Group name="center" {full}>
       {date_text}
       {weather}
     </Group>
-    {complication}
     {hands}
   </Scene>
 </WatchFace>

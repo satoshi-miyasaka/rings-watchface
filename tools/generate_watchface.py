@@ -41,8 +41,10 @@ SATURDAY = "F26FA8FF"
 
 HOLIDAY_YEARS = range(2026, 2031)
 
-# Triangle marker size per ring (seconds is a little smaller).
-MARKER = {"sec": 8.4, "min": 10.3, "hour": 10.3, "dow": 10.3}
+# Marker shape and size per ring, so the hands stay distinguishable in ambient
+# mode when the ring colours dim: triangles for seconds and minutes, a dot for
+# hours, and a bar across the weekday and week rings for the weekday.
+MARKER = {"sec": ("triangle", 8.4), "min": ("triangle", 10.3), "hour": ("dot", 7.0), "dow": ("bar", 3.9)}
 
 
 # ---------------------------------------------------------------- holidays
@@ -264,14 +266,26 @@ SS = 4  # supersampling
 
 def marker_png(ring):
     r = RINGS[ring][0]
-    s = MARKER[ring]
-    rb = r + s * 0.75
-    half = s * 0.95
+    shape, s = MARKER[ring]
     img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    pts = [(C, C - (r - s)), (C - half, C - rb), (C + half, C - rb)]
-    pts = [(x * SS, y * SS) for x, y in pts]
-    d.polygon(pts, fill=(255, 255, 255, 255), outline=(0, 0, 0, 255), width=int(1.5 * SS))
+    white, black = (255, 255, 255, 255), (0, 0, 0, 255)
+    if shape == "triangle":
+        rb = r + s * 0.75
+        half = s * 0.95
+        pts = [(C, C - (r - s)), (C - half, C - rb), (C + half, C - rb)]
+        pts = [(x * SS, y * SS) for x, y in pts]
+        d.polygon(pts, fill=white, outline=black, width=int(1.5 * SS))
+    elif shape == "dot":
+        box = [(C - s) * SS, (C - r - s) * SS, (C + s) * SS, (C - r + s) * SS]
+        d.ellipse(box, fill=white, outline=black, width=int(1.5 * SS))
+    else:  # bar from the outer edge of the weekday ring to the inner edge of the week ring
+        y_out = C - (r + RING_WIDTH / 2)
+        y_in = C - (RINGS["week"][0] - RING_WIDTH / 2)
+        for width, col in ((s + 3.6, black), (s, white)):
+            w = width * SS
+            d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),
+                                 (C * SS + w / 2, y_in * SS + (w - s * SS) / 2)], radius=w / 2, fill=col)
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
     img.save(RES / "drawable-nodpi" / f"hand_{ring}.png", optimize=True)
 

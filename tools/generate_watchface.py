@@ -47,6 +47,13 @@ HOLIDAY_YEARS = range(2026, 2031)
 MARKER = {"sec": ("triangle", 8.4), "min": ("triangle", 10.3), "hour": ("dot", 7.0), "dow": ("bar", 3.9)}
 
 
+# The companion app (wear module) packs ring segments into GOAL_PROGRESS
+# values; see wear/.../Rings.kt for the layout. Component names of its sources:
+COMPANION = "io.github.satoshimiyasaka.rings/io.github.satoshimiyasaka.rings."
+LIT_ALPHA = "F2"
+NO_TIMER = 90000  # the app sends 100000 when no timer runs
+
+
 # ---------------------------------------------------------------- holidays
 
 def _nth_monday(year, month, n):
@@ -185,6 +192,93 @@ def holiday_conditions():
 
 # ---------------------------------------------------------------- watch face
 
+V = "[COMPLICATION.GOAL_PROGRESS_VALUE]"
+T = "[COMPLICATION.GOAL_PROGRESS_TARGET_VALUE]"
+
+
+def lit_if(name, expr, body):
+    return (
+        "<Condition><Expressions>"
+        f'<Expression name="{name}"><![CDATA[{expr}]]></Expression>'
+        "</Expressions>"
+        f'<Compare expression="{name}">{body}</Compare></Condition>'
+    )
+
+
+def bit(field, i):
+    """Expression that is true when bit i of a packed complication field is set."""
+    return f"floor({field} / {2 ** i}) % 2 == 1"
+
+
+def data_slot(slot_id, name, source, body):
+    """A full-screen slot that only draws.
+
+    The bounding box has to cover the whole face: the runtime clips what a
+    complication draws to its bounding box, and the lit segments sit on the rings.
+    Keep these slots and the next-event slot in the same order in the scene:
+    the watch saves each slot's data source by its position, so reordering
+    hands every slot another slot's data.
+    """
+    return (
+        f'<ComplicationSlot slotId="{slot_id}" name="{name}" displayName="@string/{name}" '
+        f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="TRUE">'
+        f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="GOAL_PROGRESS" '
+        f'primaryProvider="{COMPANION}{source}" primaryProviderType="GOAL_PROGRESS"/>'
+        f'<BoundingBox x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
+        '<Variant mode="AMBIENT" target="alpha" value="110"/>'
+        f'<Complication type="GOAL_PROGRESS">{body}</Complication>'
+        "</ComplicationSlot>"
+    )
+
+
+def companion_slots():
+    hour_r, hour_col, _ = RINGS["hour"]
+    min_r, min_col, _ = RINGS["min"]
+    week_r, week_col, _ = RINGS["week"]
+
+    # Hour ring: 24 half-hour segments in the value.
+    hour = "".join(
+        lit_if(f"hourBit{i}", bit(V, i),
+               part_draw(f"hourSeg{i}", arc(hour_r, i * 15, (i + 1) * 15, LIT_ALPHA + hour_col)))
+        for i in range(24)
+    )
+    # Timer on the minute ring: 60 one-minute segments, lit from the current
+    # minute up to the end second carried in the target. Conditions are nested
+    # rather than joined with && and the angles are fixed, because the runtime
+    # did not evaluate either of those as expected.
+    left = f"((({T} - 1) - [SECONDS_IN_DAY] + 86400) % 86400)"
+    minutes = "".join(
+        lit_if(f"timerMin{k}",
+               f"((({k * 60 + 59}) - ([SECONDS_IN_DAY] % 3600) + 3600) % 3600) < {left} + 59",
+               part_draw(f"timerSeg{k}", arc(min_r, k * 6, (k + 1) * 6, LIT_ALPHA + min_col)))
+        for k in range(60)
+    )
+    timer = lit_if("timerOn", f"{T} < {NO_TIMER}", lit_if("timerNear", f"{left} < 43200", minutes))
+
+    # Week ring: 7 weekdays x 12 two-hour blocks, 24 bits per field.
+    seg = 360 / 7
+    block = seg / 12
+
+    def week_day(day, field, shift, offset=""):
+        expr_field = f"({field}{offset})"
+        return "".join(
+            lit_if(f"week{day}b{b}", bit(expr_field, shift + b),
+                   part_draw(f"week{day}s{b}",
+                             arc(week_r, day * seg + b * block, day * seg + (b + 1) * block,
+                                 LIT_ALPHA + week_col)))
+            for b in range(12)
+        )
+
+    week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
+    week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
+
+    return (
+        data_slot(1, "ring_hour", "HourRingDataSource", hour + timer)
+        + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
+        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
+    )
+
+
 def watchface_xml():
     seg = 360 / 7
     tracks = "".join(arc(r, 0, 360, TRACK_ALPHA + col) for r, col, _ in RINGS.values())
@@ -246,8 +340,9 @@ def watchface_xml():
       {part_draw("tracks", tracks)}
       {part_draw("weekend", weekend)}
       {holiday_conditions()}
-      {part_draw("slits", all_slits)}
     </Group>
+    {companion_slots()}
+    {part_draw("slits", all_slits)}
     <Group name="center" {full}>
       {date_text}
       {weather}

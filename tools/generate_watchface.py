@@ -32,8 +32,8 @@ RINGS = {
     "sec": (204.0, "FF6B5B", 12),
     "min": (181.5, "FFD166", 12),
     "hour": (159.0, "5FD4E6", 12),
-    "dow": (136.5, "7EE081", 7),
-    "week": (114.0, "B28CFF", 7),
+    "week": (136.5, "B28CFF", 7),
+    "dow": (114.0, "7EE081", 7),
 }
 TRACK_ALPHA = "4D"  # 30 %
 SUNDAY_HOLIDAY = "F2FF8FA3"
@@ -43,7 +43,7 @@ HOLIDAY_YEARS = range(2026, 2031)
 
 # Marker shape and size per ring, so the hands stay distinguishable in ambient
 # mode when the ring colours dim: triangles for seconds and minutes, a dot for
-# hours, and a bar across the weekday and week rings for the weekday.
+# hours, and a bar across the week and weekday rings for the weekday.
 MARKER = {"sec": ("triangle", 8.4), "min": ("triangle", 10.3), "hour": ("dot", 7.0), "dow": ("bar", 3.9)}
 
 
@@ -214,9 +214,6 @@ def data_slot(slot_id, name, source, body):
 
     The bounding box has to cover the whole face: the runtime clips what a
     complication draws to its bounding box, and the lit segments sit on the rings.
-    It also means a tap anywhere on the face reaches these slots, which is how
-    the face switches to the past view.
-
     The slots are not customizable, so they stay out of the watch face editor.
 
     Do not add, remove or reorder slots once the closed test has started. The
@@ -256,9 +253,6 @@ def companion_slots():
     minutes_low = "".join(minute(k, f"({T} - 1)", 0) for k in range(24))
     minutes_high = "".join(minute(k, V, 24) for k in range(24, 48)) + "".join(
         minute(k, f"({T} - 1)", 48) for k in range(48, 60))
-    # Bit 12 of the minute slot's target marks the past view.
-    past_label = lit_if("pastView", bit(f"({T} - 1)", 12),
-                        text("pastLabel", 155, 128, 140, 26, 15, "FFE8EBF0", "◀ これまで"))
 
     # Week ring: 7 weekdays x 12 two-hour blocks, 24 bits per field.
     seg = 360 / 7
@@ -281,7 +275,7 @@ def companion_slots():
         data_slot(1, "ring_hour", "HourRingDataSource", hour + minutes_low)
         + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
         + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
-    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high + past_label)
+    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high)
 
 
 def watchface_xml():
@@ -381,9 +375,9 @@ def marker_png(ring):
     elif shape == "dot":
         box = [(C - s) * SS, (C - r - s) * SS, (C + s) * SS, (C - r + s) * SS]
         d.ellipse(box, fill=white, outline=black, width=int(1.5 * SS))
-    else:  # bar from the outer edge of the weekday ring to the inner edge of the week ring
-        y_out = C - (r + RING_WIDTH / 2)
-        y_in = C - (RINGS["week"][0] - RING_WIDTH / 2)
+    else:  # bar from the outer edge of the week ring to the inner edge of the weekday ring
+        y_out = C - (RINGS["week"][0] + RING_WIDTH / 2)
+        y_in = C - (r - RING_WIDTH / 2)
         for width, col in ((s + 3.6, black), (s, white)):
             w = width * SS
             d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),

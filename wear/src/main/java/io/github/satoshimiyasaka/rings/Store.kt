@@ -18,20 +18,6 @@ object Store {
         refreshWatchFace(context)
     }
 
-    /** Whether the face shows the past instead of the coming hours and days. */
-    fun past(context: Context): Boolean = prefs(context).getBoolean("past", false)
-
-    /** When the face was last tapped, to log how long the switch takes. */
-    fun tappedAt(context: Context): Long = prefs(context).getLong("tappedAt", 0L)
-
-    fun togglePast(context: Context, now: Long) {
-        prefs(context).edit()
-            .putBoolean("past", !past(context))
-            .putLong("tappedAt", now)
-            .commit()
-        refreshWatchFace(context)
-    }
-
     fun refreshWatchFace(context: Context) {
         for (source in listOf(
             HourRingDataSource::class.java,

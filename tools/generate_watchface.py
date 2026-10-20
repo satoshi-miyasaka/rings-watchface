@@ -32,8 +32,8 @@ RINGS = {
     "sec": (204.0, "FF6B5B", 12),
     "min": (181.5, "FFD166", 12),
     "hour": (159.0, "5FD4E6", 12),
-    "dow": (136.5, "7EE081", 7),
-    "week": (114.0, "B28CFF", 7),
+    "week": (136.5, "B28CFF", 7),
+    "dow": (114.0, "7EE081", 7),
 }
 TRACK_ALPHA = "4D"  # 30 %
 SUNDAY_HOLIDAY = "F2FF8FA3"
@@ -43,7 +43,7 @@ HOLIDAY_YEARS = range(2026, 2031)
 
 # Marker shape and size per ring, so the hands stay distinguishable in ambient
 # mode when the ring colours dim: triangles for seconds and minutes, a dot for
-# hours, and a bar across the weekday and week rings for the weekday.
+# hours, and a bar across the week and weekday rings for the weekday.
 MARKER = {"sec": ("triangle", 8.4), "min": ("triangle", 10.3), "hour": ("dot", 7.0), "dow": ("bar", 3.9)}
 
 
@@ -210,17 +210,20 @@ def bit(field, i):
 
 
 def data_slot(slot_id, name, source, body):
-    """A full-screen slot that only draws.
+    """A full-screen slot that only draws, fixed to one of the companion's sources.
 
     The bounding box has to cover the whole face: the runtime clips what a
     complication draws to its bounding box, and the lit segments sit on the rings.
-    Keep these slots and the next-event slot in the same order in the scene:
-    the watch saves each slot's data source by its position, so reordering
-    hands every slot another slot's data. Add new slots at the end.
+    The slots are not customizable, so they stay out of the watch face editor.
+
+    Do not add, remove or reorder slots once the closed test has started. The
+    watch saves each slot's data source by its position when the face is
+    added: reordering hands every slot another slot's data, and a slot added
+    later stays empty on watches that update until the face is added again.
     """
     return (
         f'<ComplicationSlot slotId="{slot_id}" name="{name}" displayName="@string/{name}" '
-        f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="TRUE">'
+        f'x="0" y="0" width="{SIZE}" height="{SIZE}" supportedTypes="GOAL_PROGRESS" isCustomizable="FALSE">'
         f'<DefaultProviderPolicy defaultSystemProvider="EMPTY" defaultSystemProviderType="GOAL_PROGRESS" '
         f'primaryProvider="{COMPANION}{source}" primaryProviderType="GOAL_PROGRESS"/>'
         f'<BoundingBox x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
@@ -372,9 +375,9 @@ def marker_png(ring):
     elif shape == "dot":
         box = [(C - s) * SS, (C - r - s) * SS, (C + s) * SS, (C - r + s) * SS]
         d.ellipse(box, fill=white, outline=black, width=int(1.5 * SS))
-    else:  # bar from the outer edge of the weekday ring to the inner edge of the week ring
-        y_out = C - (r + RING_WIDTH / 2)
-        y_in = C - (RINGS["week"][0] - RING_WIDTH / 2)
+    else:  # bar from the outer edge of the week ring to the inner edge of the weekday ring
+        y_out = C - (RINGS["week"][0] + RING_WIDTH / 2)
+        y_in = C - (r - RING_WIDTH / 2)
         for width, col in ((s + 3.6, black), (s, white)):
             w = width * SS
             d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),

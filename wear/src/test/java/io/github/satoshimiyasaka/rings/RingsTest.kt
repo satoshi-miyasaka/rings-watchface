@@ -94,4 +94,13 @@ class RingsTest {
         assertEquals(16_777_215f, mid) // bits 24-47
         assertEquals(4096f, high) // bits 48-59, plus one
     }
+
+    @Test
+    fun switchTimesFollowTheTopOfEachHour() {
+        val times = Rings.switchTimes(now, tokyo, hours = 3)
+        assertEquals(
+            listOf(now, ms(2026, 10, 16, 12, 0), ms(2026, 10, 16, 13, 0), ms(2026, 10, 16, 14, 0)),
+            times,
+        )
+    }
 }

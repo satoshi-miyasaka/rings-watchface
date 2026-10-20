@@ -67,9 +67,32 @@ class RingsTest {
     }
 
     @Test
-    fun timerEndsAsSecondOfDay() {
-        val end = ms(2026, 10, 16, 11, 25)
-        assertEquals((11 * 3600 + 25 * 60 + 1).toFloat(), Rings.timerValue(end, now, tokyo))
-        assertEquals(Rings.NO_TIMER, Rings.timerValue(now - 1, now, tokyo))
+    fun minuteRingShowsTheComingSixtyMinutes() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 11, 30), ms(2026, 10, 16, 11, 45), // minutes 30-44
+            ms(2026, 10, 16, 12, 5), ms(2026, 10, 16, 12, 7), // next lap: minutes 5-6
+            ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 3), // passed and not next lap: off
+            ms(2026, 10, 16, 12, 20), ms(2026, 10, 16, 12, 30), // beyond 60 minutes: off
+        )
+        var expected = 0L
+        for (k in 30..44) expected = expected or (1L shl k)
+        expected = expected or (1L shl 5) or (1L shl 6)
+        assertEquals(expected, Rings.minuteMask(events, now, tokyo))
+    }
+
+    @Test
+    fun currentMinuteStaysWhileRunning() {
+        val events = longArrayOf(ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 11))
+        assertEquals(1L shl 10, Rings.minuteMask(events, now, tokyo))
+    }
+
+    @Test
+    fun minuteBitsSplitAcrossTwoSources() {
+        val events = longArrayOf(ms(2026, 10, 16, 11, 10), ms(2026, 10, 16, 12, 10))
+        val (_, low) = Rings.hourRing(events, now, tokyo)
+        val (mid, high) = Rings.minuteRing(events, now, tokyo)
+        assertEquals(16_777_216f, low) // bits 0-23 all set, plus one
+        assertEquals(16_777_215f, mid) // bits 24-47
+        assertEquals(4096f, high) // bits 48-59, plus one
     }
 }

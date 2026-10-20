@@ -4,7 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 
-/** The latest events from the phone and the timer, kept on the watch. */
+/** The latest events from the phone, kept on the watch. */
 object Store {
     private fun prefs(context: Context) =
         context.getSharedPreferences("rings", Context.MODE_PRIVATE)
@@ -18,18 +18,12 @@ object Store {
         refreshWatchFace(context)
     }
 
-    fun timerEnd(context: Context): Long = prefs(context).getLong("timer_end", 0)
-
-    fun saveTimerEnd(context: Context, end: Long) {
-        prefs(context).edit().putLong("timer_end", end).apply()
-        refreshWatchFace(context)
-    }
-
     fun refreshWatchFace(context: Context) {
         for (source in listOf(
             HourRingDataSource::class.java,
             WeekADataSource::class.java,
             WeekBDataSource::class.java,
+            MinuteRingDataSource::class.java,
         )) {
             ComplicationDataSourceUpdateRequester
                 .create(context, ComponentName(context, source))

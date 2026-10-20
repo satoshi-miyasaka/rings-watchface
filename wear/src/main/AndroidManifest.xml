@@ -3,9 +3,6 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-
     <application
         android:icon="@drawable/ic_rings"
         android:label="@string/app_name"
@@ -14,21 +11,6 @@
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="false" />
-
-        <activity
-            android:name=".TimerActivity"
-            android:exported="true"
-            android:label="@string/timer_label"
-            android:taskAffinity="">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <receiver
-            android:name=".TimerReceiver"
-            android:exported="false" />
 
         <service
             android:name=".DataLayerListenerService"
@@ -42,7 +24,7 @@
             </intent-filter>
         </service>
 
-        <!-- Three data sources feed the Rings watch face. Each sends packed bits in
+        <!-- Four data sources feed the Rings watch face. Each sends packed bits in
              a GOAL_PROGRESS value; see Rings.kt for the layout. -->
         <service
             android:name=".HourRingDataSource"
@@ -58,7 +40,7 @@
                 android:value="GOAL_PROGRESS" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="300" />
+                android:value="60" />
         </service>
 
         <service
@@ -93,6 +75,23 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="900" />
+        </service>
+
+        <service
+            android:name=".MinuteRingDataSource"
+            android:exported="true"
+            android:icon="@drawable/ic_rings"
+            android:label="@string/source_minute"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="GOAL_PROGRESS" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="60" />
         </service>
     </application>
 

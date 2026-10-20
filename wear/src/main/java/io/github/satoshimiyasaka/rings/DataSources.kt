@@ -20,10 +20,11 @@ import java.time.ZoneId
  * on an old lap until the next update happened to come. Each answer is
  * therefore a timeline of the coming day, one entry per stretch with the same
  * values, and the watch picks the entry for the current time when it draws.
+ * In the five-minute mode the timeline has a step every five minutes.
  */
 abstract class RingDataSource : ComplicationDataSourceService() {
 
-    abstract fun values(events: LongArray, now: Long, zone: ZoneId): Pair<Float, Float>
+    abstract fun values(inputs: Inputs, now: Long, zone: ZoneId): Pair<Float, Float>
 
     abstract val label: String
 
@@ -32,10 +33,11 @@ abstract class RingDataSource : ComplicationDataSourceService() {
             listener.onComplicationData(null)
             return
         }
-        val events = Store.events(this)
+        val inputs = Store.inputs(this)
         val zone = ZoneId.systemDefault()
-        val times = Rings.switchTimes(System.currentTimeMillis(), zone)
-        val values = times.dropLast(1).map { values(events, it, zone) }
+        val step = if (inputs.mode == MODE_EVERY_FIVE_MINUTES) 5L else 60L
+        val times = Rings.switchTimes(System.currentTimeMillis(), zone, stepMinutes = step)
+        val values = times.dropLast(1).map { values(inputs, it, zone) }
         val entries = ArrayList<TimelineEntry>()
         var from = 0
         for (i in 1..values.size) {
@@ -60,26 +62,31 @@ abstract class RingDataSource : ComplicationDataSourceService() {
     }
 }
 
+private val Inputs.rolling get() = mode == MODE_EVERY_FIVE_MINUTES
+
 class HourRingDataSource : RingDataSource() {
     override val label = "Rings hour"
-    override fun values(events: LongArray, now: Long, zone: ZoneId) =
-        Rings.hourRing(events, now, zone)
+    override fun values(inputs: Inputs, now: Long, zone: ZoneId) =
+        Rings.hourRing(inputs.events, now, zone, inputs.rolling)
 }
 
 class WeekADataSource : RingDataSource() {
     override val label = "Rings week A"
-    override fun values(events: LongArray, now: Long, zone: ZoneId) =
-        Rings.weekA(Rings.weekMasks(events, now, zone))
+    override fun values(inputs: Inputs, now: Long, zone: ZoneId) =
+        Rings.weekA(Rings.weekMasks(inputs.events, now, zone))
 }
 
 class WeekBDataSource : RingDataSource() {
     override val label = "Rings week B"
-    override fun values(events: LongArray, now: Long, zone: ZoneId) =
-        Rings.weekB(Rings.weekMasks(events, now, zone))
+    override fun values(inputs: Inputs, now: Long, zone: ZoneId) =
+        Rings.weekB(Rings.weekMasks(inputs.events, now, zone), Rings.daysOffFlags(inputs.daysOff, now, zone))
 }
 
 class MinuteRingDataSource : RingDataSource() {
     override val label = "Rings minute"
-    override fun values(events: LongArray, now: Long, zone: ZoneId) =
-        Rings.minuteRing(events, now, zone)
+    override fun values(inputs: Inputs, now: Long, zone: ZoneId) =
+        Rings.minuteRing(
+            inputs.events, now, zone, inputs.rolling,
+            Rings.phoneBatteryBits(inputs.phoneBattery, inputs.syncedAt, now),
+        )
 }

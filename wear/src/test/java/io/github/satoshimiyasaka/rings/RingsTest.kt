@@ -103,4 +103,56 @@ class RingsTest {
             times,
         )
     }
+
+    @Test
+    fun everyFiveMinutesTheHourRingShowsTheNextLapBehindTheHand() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 9, 0), ms(2026, 10, 16, 10, 0), // passed this morning: gone
+            ms(2026, 10, 16, 21, 0), ms(2026, 10, 16, 21, 30), // 9 tonight: bit 18, behind the hand
+            ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 30), // in progress: bit 22 stays
+            ms(2026, 10, 16, 23, 0), ms(2026, 10, 16, 23, 30), // tonight at 11: not before 11:30
+        )
+        val mask = Rings.hourMask(events, now, tokyo, rolling = true)
+        assertEquals((1 shl 18) or (1 shl 22), mask)
+    }
+
+    @Test
+    fun everyFiveMinutesTheMinuteRingShowsTheNextHourBehindTheHand() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 3), // passed: gone
+            ms(2026, 10, 16, 12, 5), ms(2026, 10, 16, 12, 7), // next hour, behind the hand: minutes 5, 6
+            ms(2026, 10, 16, 11, 10), ms(2026, 10, 16, 11, 11), // now: minute 10 stays
+            ms(2026, 10, 16, 12, 30), ms(2026, 10, 16, 12, 31), // next hour, ahead of the hand: not yet
+        )
+        val expected = (1L shl 5) or (1L shl 6) or (1L shl 10)
+        assertEquals(expected, Rings.minuteMask(events, now, tokyo, rolling = true))
+    }
+
+    @Test
+    fun switchTimesEveryFiveMinutes() {
+        val times = Rings.switchTimes(now + 60_000, tokyo, hours = 1, stepMinutes = 5)
+        assertEquals(13, times.size)
+        assertEquals(ms(2026, 10, 16, 11, 15), times[1])
+        assertEquals(ms(2026, 10, 16, 12, 10), times.last())
+    }
+
+    @Test
+    fun daysOffFollowTheWeekRingsDays() {
+        val day = { d: Int -> java.time.LocalDate.of(2026, 10, d).toEpochDay() }
+        // Monday the 19th and next Thursday the 22nd; Friday the 23rd is a week away.
+        val flags = Rings.daysOffFlags(longArrayOf(day(19), day(22), day(23), day(15)), now, tokyo)
+        assertEquals((1 shl 1) or (1 shl 4), flags)
+        val (_, target) = Rings.weekB(IntArray(7), flags)
+        assertEquals(((1 shl 13) or (1 shl 16)) + 1f, target)
+    }
+
+    @Test
+    fun phoneBatteryRidesOnTheMinuteTarget() {
+        val bits = Rings.phoneBatteryBits(57, now - 60_000, now)
+        assertEquals(57 or 128, bits)
+        val (_, target) = Rings.minuteRing(LongArray(0), now, tokyo, phoneBattery = bits)
+        assertEquals(((57 or 128) shl 12) + 1f, target)
+        assertEquals(0, Rings.phoneBatteryBits(57, now - 4 * 3_600_000L, now)) // too old
+        assertEquals(0, Rings.phoneBatteryBits(-1, now, now))
+    }
 }

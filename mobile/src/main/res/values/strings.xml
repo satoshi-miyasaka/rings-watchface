@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rings</string>
-    <string name="intro">7日先までの予定を時計の Rings 文字盤に送ります。予定の中身は送らず、開始と終了の時刻だけを送ります。</string>
+    <string name="intro">7日先までの予定を時計の Rings 文字盤に送ります。予定の中身は送らず、開始と終了の時刻だけを送ります。スマホの電池残量も一緒に送ります。</string>
     <string name="grant">カレンダーへのアクセスを許可</string>
     <string name="sync_now">今すぐ時計に送る</string>
     <string name="status_need_permission">カレンダーへのアクセスが必要です。</string>
     <string name="status_waiting">送信の準備ができました。</string>
     <string name="status_synced">%1$s に %2$d 件の予定を送りました。</string>
+    <string name="mode_heading">時と分のリングの切り替え</string>
+    <string name="mode_per_lap">1周したら切り替える</string>
+    <string name="mode_five_minutes">5分ごとに切り替える（針が過ぎた所に次の周の予定を出す）</string>
+    <string name="days_off_heading">休みにする終日の予定</string>
+    <string name="days_off_note">この言葉を名前に含む終日の予定がある日を、曜日のリングで祝日と同じ色にします。読点かカンマで区切ります。</string>
+    <string name="days_off_hint">休み,休暇,有給,休日</string>
+    <string name="calendars_heading">使うカレンダー</string>
+    <string name="calendars_note">チェックを外したカレンダーの予定は時計に送りません。</string>
 </resources>

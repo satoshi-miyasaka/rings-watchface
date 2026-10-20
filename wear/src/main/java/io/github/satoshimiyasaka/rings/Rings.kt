@@ -88,6 +88,16 @@ object Rings {
         }
     }
 
+    /**
+     * When the rings may change over the coming [hours]: now, then every top
+     * of the hour, which covers the minute ring's hourly lap and the hour and
+     * week rings' changes at 0:00 and 12:00. The last time ends the timeline.
+     */
+    fun switchTimes(now: Long, zone: ZoneId, hours: Int = 24): List<Long> {
+        val hour = Instant.ofEpochMilli(now).atZone(zone).withMinute(0).withSecond(0).withNano(0)
+        return listOf(now) + (1..hours).map { hour.plusHours(it.toLong()).toEpochMilli() }
+    }
+
     /** Values for the four data sources: (value, target) each. */
     fun hourRing(events: LongArray, now: Long, zone: ZoneId) =
         hourMask(events, now, zone).toFloat() to

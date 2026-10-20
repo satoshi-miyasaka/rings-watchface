@@ -53,8 +53,9 @@ LINE = 3.9
 DOW_BAR = 3.9
 
 # White slits at the 12 hour positions of the second, minute and hour rings,
-# drawn over the black ones. They stay at full brightness in ambient mode, so the time can be read
-# when the rings dim.
+# and between the days of the weekday ring, drawn over the black ones. They
+# stay at full brightness in ambient mode, so the time can be read when the
+# rings dim.
 TICK_COLOR = "FFFFFFFF"
 TICK_THICK = {True: 3.6, False: 2.4}  # quarter hours, others
 
@@ -168,6 +169,10 @@ def tick_lines():
         for i in range(12):
             yield (*point(i * 30, r - RING_WIDTH / 2), *point(i * 30, r + RING_WIDTH / 2),
                    TICK_THICK[i % 3 == 0])
+    r = RINGS["dow"][0]
+    for i in range(7):  # between the days of the weekday ring
+        a = i * 360 / 7
+        yield (*point(a, r - RING_WIDTH / 2), *point(a, r + RING_WIDTH / 2), TICK_THICK[False])
 
 
 def ticks():

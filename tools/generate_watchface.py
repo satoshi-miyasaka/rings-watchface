@@ -44,7 +44,8 @@ HOLIDAY_YEARS = range(2026, 2031)
 # Marker shapes the editor offers for the second, minute and hour hands, and
 # each hand's default. Distinct shapes keep the hands apart in ambient mode,
 # when the ring colours dim. Sizes are per ring so the shapes stay in proportion.
-HAND_SHAPES = ("triangle", "dot", "line")
+# "triangle" points at the centre (shown as 内向き), "triangleUp" away from it (外向き).
+HAND_SHAPES = {ring: ("triangle", "triangleUp", "dot", "line") for ring in ("sec", "min", "hour")}
 HAND_DEFAULT = {"sec": "triangle", "min": "triangle", "hour": "dot"}
 TRIANGLE = {"sec": 8.4, "min": 10.3, "hour": 10.3}
 DOT = {"sec": 6.0, "min": 6.5, "hour": 7.0}
@@ -52,11 +53,22 @@ LINE = 3.9
 # The weekday marker is a bar across the week and weekday rings.
 DOW_BAR = 3.9
 
-# White slits at the 12 hour positions of the second, minute and hour rings,
-# and between the days of the weekday ring, drawn over the black ones. They
-# stay at full brightness in ambient mode, so the time can be read when the
-# rings dim.
-TICK_COLOR = "FFFFFFFF"
+# Bright slits drawn over the black ones of the chosen rings. They stay at
+# full brightness in ambient mode, so the time can be read when the rings
+# dim. The editor offers these sets of rings and colours.
+TICK_SETS = (
+    ("secDow", ("sec", "dow")),
+    ("all", ("sec", "min", "hour", "week", "dow")),
+    ("none", ()),
+)
+TICK_COLORS = (
+    ("white", "FFFFFFFF"),
+    ("red", "FFFF5A5A"),
+    ("blue", "FF5A9BFF"),
+    ("yellow", "FFFFE14D"),
+    ("green", "FF5FE07A"),
+    ("gray", "FF9AA0A6"),
+)
 TICK_THICK = {True: 3.6, False: 2.4}  # quarter hours, others
 
 # What the seconds ring can show besides the seconds, as a lit arc from 12
@@ -162,24 +174,21 @@ def slits(r, n):
     return "".join(out)
 
 
-def tick_lines():
-    """(x1, y1, x2, y2, thickness) of each white slit."""
-    for ring in ("sec", "min", "hour"):
-        r = RINGS[ring][0]
-        for i in range(12):
-            yield (*point(i * 30, r - RING_WIDTH / 2), *point(i * 30, r + RING_WIDTH / 2),
-                   TICK_THICK[i % 3 == 0])
-    r = RINGS["dow"][0]
-    for i in range(7):  # between the days of the weekday ring
-        a = i * 360 / 7
-        yield (*point(a, r - RING_WIDTH / 2), *point(a, r + RING_WIDTH / 2), TICK_THICK[False])
+def tick_lines(rings):
+    """(x1, y1, x2, y2, thickness) of each bright slit on the given rings."""
+    for ring in rings:
+        r, _, n = RINGS[ring]
+        for i in range(n):
+            a = i * 360 / n
+            yield (*point(a, r - RING_WIDTH / 2), *point(a, r + RING_WIDTH / 2),
+                   TICK_THICK[n == 12 and i % 3 == 0])
 
 
-def ticks():
+def ticks(rings):
     return "".join(
         f'<Line startX="{x1:.2f}" startY="{y1:.2f}" endX="{x2:.2f}" endY="{y2:.2f}">'
-        f'<Stroke color="#{TICK_COLOR}" thickness="{t}"/></Line>'
-        for x1, y1, x2, y2, t in tick_lines()
+        f'<Stroke color="[CONFIGURATION.tickColor.0]" thickness="{t}"/></Line>'
+        for x1, y1, x2, y2, t in tick_lines(rings)
     )
 
 
@@ -377,25 +386,32 @@ def watchface_xml():
     sec_value = sec_value_options(
         lambda opt, expr: expr and part_draw(f"{opt}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, expr)))
     tick_marks = (
-        '<BooleanConfiguration id="ticks">'
-        f'<BooleanOption id="TRUE">{part_draw("ticks", ticks())}</BooleanOption>'
-        f'<BooleanOption id="FALSE">{empty()}</BooleanOption>'
-        "</BooleanConfiguration>"
+        '<ListConfiguration id="tickRings">'
+        + "".join(f'<ListOption id="{opt}">{part_draw("ticks", ticks(rings)) if rings else empty()}</ListOption>'
+                  for opt, rings in TICK_SETS)
+        + "</ListConfiguration>"
     )
 
-    def options(ids, prefix):
-        return "".join(f'<ListOption id="{i}" displayName="@string/{prefix}_{i}"/>' for i in ids)
+    def options(ids, prefix, icon):
+        return "".join(
+            f'<ListOption id="{i}" displayName="@string/{prefix}_{i}" icon="{icon}_{i.lower()}"/>' for i in ids)
 
     configurations = (
         "<UserConfigurations>"
-        '<BooleanConfiguration id="ticks" displayName="@string/cfg_ticks" defaultValue="TRUE"/>'
+        f'<ListConfiguration id="tickRings" displayName="@string/cfg_tick_rings" defaultValue="{TICK_SETS[0][0]}">'
+        + options([opt for opt, _ in TICK_SETS], "tick_rings", "icon_ticks")
+        + "</ListConfiguration>"
+        '<ColorConfiguration id="tickColor" displayName="@string/cfg_tick_color" defaultValue="white">'
+        + "".join(f'<ColorOption id="{i}" displayName="@string/color_{i}" colors="#{c}"/>' for i, c in TICK_COLORS)
+        + "</ColorConfiguration>"
         + "".join(
             f'<ListConfiguration id="hand_{ring}" displayName="@string/cfg_hand_{ring}" '
-            f'defaultValue="{HAND_DEFAULT[ring]}">{options(HAND_SHAPES, "shape")}</ListConfiguration>'
+            f'defaultValue="{HAND_DEFAULT[ring]}">{options(HAND_SHAPES[ring], "shape", "icon_shape")}'
+            "</ListConfiguration>"
             for ring in ("sec", "min", "hour")
         )
         + '<ListConfiguration id="secValue" displayName="@string/cfg_sec_value" defaultValue="none">'
-        + options([opt for opt, _ in SEC_VALUES], "sec_value")
+        + options([opt for opt, _ in SEC_VALUES], "sec_value", "icon_sec")
         + "</ListConfiguration></UserConfigurations>"
     )
 
@@ -437,12 +453,12 @@ def watchface_xml():
         inner = ('<Variant mode="AMBIENT" target="alpha" value="0"/><Sweep frequency="5"/>'
                  if ring == "sec" else "")
         return (f"<AnalogClock {full}>"
-                f'<{tag} resource="hand_{ring}_{shape}" {full}>{inner}</{tag}>'
+                f'<{tag} resource="hand_{ring}_{shape.lower()}" {full}>{inner}</{tag}>'
                 "</AnalogClock>")
 
     hands = "".join(
         f'<ListConfiguration id="hand_{ring}">'
-        + "".join(f'<ListOption id="{shape}">{hand(ring, shape)}</ListOption>' for shape in HAND_SHAPES)
+        + "".join(f'<ListOption id="{shape}">{hand(ring, shape)}</ListOption>' for shape in HAND_SHAPES[ring])
         + "</ListConfiguration>"
         for ring in ("hour", "min", "sec")
     ) + (
@@ -490,11 +506,13 @@ def marker_png(ring, shape):
     img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     white, black = (255, 255, 255, 255), (0, 0, 0, 255)
-    if shape == "triangle":
+    if shape in ("triangle", "triangleUp"):
         s = TRIANGLE[ring]
-        rb = r + s * 0.75
         half = s * 0.95
-        pts = [(C, C - (r - s)), (C - half, C - rb), (C + half, C - rb)]
+        if shape == "triangle":  # tip towards the centre
+            pts = [(C, C - (r - s)), (C - half, C - (r + s * 0.75)), (C + half, C - (r + s * 0.75))]
+        else:
+            pts = [(C, C - (r + s)), (C - half, C - (r - s * 0.75)), (C + half, C - (r - s * 0.75))]
         pts = [(x * SS, y * SS) for x, y in pts]
         d.polygon(pts, fill=white, outline=black, width=int(1.5 * SS))
     elif shape == "dot":
@@ -515,8 +533,76 @@ def marker_png(ring, shape):
             d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),
                                  (C * SS + w / 2, y_in * SS + (w - s * SS) / 2)], radius=w / 2, fill=col)
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
-    name = "hand_dow" if ring == "dow" else f"hand_{ring}_{shape}"
+    name = "hand_dow" if ring == "dow" else f"hand_{ring}_{shape.lower()}"
     img.save(RES / "drawable-nodpi" / f"{name}.png", optimize=True)
+
+
+ICON = 96  # editor option icons
+
+
+def option_icons():
+    """Images for the editor's option buttons: the shape, the rings or the value."""
+    out = RES / "drawable-nodpi"
+    k = ICON * SS
+    font_path = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+
+    def canvas():
+        img = Image.new("RGBA", (k, k), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse([0, 0, k - 1, k - 1], fill=(32, 33, 36, 255))
+        return img, d
+
+    def save(img, name):  # Android resource names are lower case
+        name = name.lower()
+        img.resize((ICON, ICON), Image.LANCZOS).save(out / f"{name}.png", optimize=True)
+
+    white, black = (255, 255, 255, 255), (0, 0, 0, 255)
+    c, u = k / 2, k / 96  # centre, one icon pixel
+    shapes = {s for ring in HAND_SHAPES.values() for s in ring}
+    for shape in shapes:
+        img, d = canvas()
+        if shape == "triangle":
+            d.polygon([(c, c + 22 * u), (c - 24 * u, c - 18 * u), (c + 24 * u, c - 18 * u)], fill=white)
+        elif shape == "triangleUp":
+            d.polygon([(c, c - 22 * u), (c - 24 * u, c + 18 * u), (c + 24 * u, c + 18 * u)], fill=white)
+        elif shape == "dot":
+            d.ellipse([c - 18 * u, c - 18 * u, c + 18 * u, c + 18 * u], fill=white)
+        else:
+            d.rounded_rectangle([c - 6 * u, c - 28 * u, c + 6 * u, c + 28 * u], radius=6 * u, fill=white)
+        save(img, f"icon_shape_{shape}")
+
+    # Rings in miniature, with the chosen rings' slits.
+    scale = (k / 2 - 6 * u) / (RINGS["sec"][0] + RING_WIDTH / 2)
+    for opt, rings in TICK_SETS:
+        img, d = canvas()
+        for ring, (r, col, n) in RINGS.items():
+            rr = r * scale
+            width = int(RING_WIDTH * scale * 1.4)  # thicker than to scale, to read at icon size
+            d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=tuple(int(col[i:i + 2], 16) for i in (0, 2, 4)) + (140,),
+                      width=width)
+            if ring in rings:
+                for i in range(n):
+                    a = math.radians(i * 360 / n)
+                    p1 = (c + (rr - width / 2) * math.sin(a), c - (rr - width / 2) * math.cos(a))
+                    p2 = (c + (rr + width / 2) * math.sin(a), c - (rr + width / 2) * math.cos(a))
+                    d.line([p1, p2], fill=white, width=int(4 * u))
+        save(img, f"icon_ticks_{opt}")
+
+    labels = {"none": "なし", "steps": "歩数", "watchBattery": "時計", "phoneBattery": "スマホ"}
+    for opt, _ in SEC_VALUES:
+        img, d = canvas()
+        r = k / 2 - 10 * u
+        sec_col = tuple(int(RINGS["sec"][1][i:i + 2], 16) for i in (0, 2, 4))
+        d.ellipse([c - r, c - r, c + r, c + r], outline=sec_col + (90,), width=int(8 * u))
+        if opt != "none":
+            d.arc([c - r, c - r, c + r, c + r], -90, 150, fill=sec_col + (255,), width=int(8 * u))
+        size = 22 if len(labels[opt]) < 3 else 17
+        try:
+            font = ImageFont.truetype(font_path, int(size * u))
+        except OSError:
+            font = ImageFont.load_default()
+        d.text((c, c), labels[opt], font=font, fill=white, anchor="mm")
+        save(img, f"icon_sec_{opt}")
 
 
 def preview_png():
@@ -545,13 +631,13 @@ def preview_png():
             x1, y1 = point(a, r - RING_WIDTH / 2 - 1.5)
             x2, y2 = point(a, r + RING_WIDTH / 2 + 1.5)
             d.line([(x1 * SS, y1 * SS), (x2 * SS, y2 * SS)], fill=(0, 0, 0, 255), width=int(thick * SS))
-    for x1, y1, x2, y2, t in tick_lines():  # white slits, on by default
+    for x1, y1, x2, y2, t in tick_lines(TICK_SETS[0][1]):  # the default set, in white
         d.line([(x1 * SS, y1 * SS), (x2 * SS, y2 * SS)], fill=(255, 255, 255, 255), width=int(t * SS))
 
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
     angles = {"sec": 32 * 6, "min": (8 + 32 / 60) * 6, "hour": (10 + 8 / 60) * 30, "dow": (4 + 10 / 24) * 360 / 7}
     for ring, ang in angles.items():
-        name = "hand_dow" if ring == "dow" else f"hand_{ring}_{HAND_DEFAULT[ring]}"
+        name = "hand_dow" if ring == "dow" else f"hand_{ring}_{HAND_DEFAULT[ring].lower()}"
         marker = Image.open(RES / "drawable-nodpi" / f"{name}.png")
         img.alpha_composite(marker.rotate(-ang, resample=Image.BICUBIC, center=(C, C)))
 
@@ -575,10 +661,11 @@ def main():
     (RES / "raw").mkdir(parents=True, exist_ok=True)
     (RES / "drawable-nodpi").mkdir(parents=True, exist_ok=True)
     (RES / "raw" / "watchface.xml").write_text(watchface_xml(), encoding="utf-8")
-    for ring in HAND_DEFAULT:
-        for shape in HAND_SHAPES:
+    for ring, shapes in HAND_SHAPES.items():
+        for shape in shapes:
             marker_png(ring, shape)
     marker_png("dow", "bar")
+    option_icons()
     preview_png()
 
 

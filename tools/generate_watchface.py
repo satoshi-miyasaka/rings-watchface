@@ -44,7 +44,7 @@ HOLIDAY_YEARS = range(2026, 2031)
 # Marker shapes the editor offers for the second, minute and hour hands, and
 # each hand's default. Distinct shapes keep the hands apart in ambient mode,
 # when the ring colours dim. Sizes are per ring so the shapes stay in proportion.
-# "triangle" points at the centre (shown as 逆三角形), "triangleUp" away from it.
+# "triangle" points at the centre (shown as 内向き), "triangleUp" away from it (外向き).
 HAND_SHAPES = {
     "sec": ("triangle", "dot", "line"),
     "min": ("triangle", "dot", "line"),

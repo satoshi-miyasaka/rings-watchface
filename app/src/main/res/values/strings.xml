@@ -20,8 +20,8 @@
     <string name="cfg_hand_sec">秒の印</string>
     <string name="cfg_hand_min">分の印</string>
     <string name="cfg_hand_hour">時の印</string>
-    <string name="shape_triangle">逆三角形</string>
-    <string name="shape_triangleUp">三角形</string>
+    <string name="shape_triangle">内向き</string>
+    <string name="shape_triangleUp">外向き</string>
     <string name="shape_dot">丸</string>
     <string name="shape_line">線</string>
     <string name="cfg_sec_value">秒のリングに表示</string>

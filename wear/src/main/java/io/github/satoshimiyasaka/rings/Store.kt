@@ -17,6 +17,7 @@ object Store {
         return Inputs(
             events = longs(prefs.getString("events", "")),
             daysOff = longs(prefs.getString("days_off", "")),
+            allDay = longs(prefs.getString("all_day", "")),
             phoneBattery = prefs.getInt("phone_battery", -1),
             syncedAt = prefs.getLong("synced_at", 0),
             mode = prefs.getInt("mode", MODE_PER_LAP),
@@ -27,6 +28,7 @@ object Store {
         prefs(context).edit()
             .putString("events", inputs.events.joinToString(","))
             .putString("days_off", inputs.daysOff.joinToString(","))
+            .putString("all_day", inputs.allDay.joinToString(","))
             .putInt("phone_battery", inputs.phoneBattery)
             .putLong("synced_at", inputs.syncedAt)
             .putInt("mode", inputs.mode)

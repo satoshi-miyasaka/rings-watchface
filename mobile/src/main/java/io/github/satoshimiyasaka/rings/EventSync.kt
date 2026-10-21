@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 const val EVENTS_PATH = "/rings/events"
 const val KEY_EVENTS = "events"
 const val KEY_DAYS_OFF = "days_off"
+const val KEY_ALL_DAY = "all_day"
 const val KEY_PHONE_BATTERY = "phone_battery"
 const val KEY_SYNCED_AT = "synced_at"
 const val KEY_MODE = "mode"
@@ -28,8 +29,9 @@ class CalendarInfo(val id: Long, val name: String, val account: String)
 
 /**
  * Reads today's and the coming week's events from the chosen calendars and
- * sends their start and end times to the watch, with the days off, the
- * switching mode and the phone's battery. Titles and other details stay on the phone.
+ * sends their start and end times to the watch, with the days off, the days
+ * with other all-day events, the switching mode and the phone's battery.
+ * Titles and other details stay on the phone.
  */
 object EventSync {
 
@@ -84,7 +86,7 @@ object EventSync {
 
     /**
      * Returns start/end pairs flattened as [start0, end0, start1, end1, ...].
-     * All-day events (birthdays, holidays, trips) would fill whole days, so they are left out.
+     * All-day events would fill whole days, so they travel as days instead; see [readAllDay].
      */
     fun readEvents(context: Context, now: Long = System.currentTimeMillis()): LongArray {
         val out = ArrayList<Long>()
@@ -100,11 +102,14 @@ object EventSync {
         return out.toLongArray()
     }
 
-    /** Epoch days of all-day events whose title has one of the day-off words, such as 有給. */
-    fun readDaysOff(context: Context, now: Long = System.currentTimeMillis()): LongArray {
+    /**
+     * Epoch days of all-day events: first the days off, whose title has one of
+     * the day-off words such as 有給, then the days with any other all-day event.
+     */
+    fun readAllDay(context: Context, now: Long = System.currentTimeMillis()): Pair<LongArray, LongArray> {
         val words = Settings.dayOffWords(context)
-        if (words.isEmpty()) return LongArray(0)
-        val days = sortedSetOf<Long>()
+        val daysOff = sortedSetOf<Long>()
+        val others = sortedSetOf<Long>()
         val projection = arrayOf(
             CalendarContract.Instances.TITLE,
             CalendarContract.Instances.BEGIN,
@@ -112,14 +117,13 @@ object EventSync {
         )
         query(context, now, allDay = true, projection) { c ->
             val title = c.getString(0).orEmpty()
-            if (words.any { title.contains(it) }) {
-                // All-day events run from midnight to midnight UTC.
-                val first = Math.floorDiv(c.getLong(1), DAY_MS)
-                val last = Math.floorDiv(c.getLong(2) - 1, DAY_MS)
-                for (day in first..last) days += day
-            }
+            val days = if (words.any { title.contains(it) }) daysOff else others
+            // All-day events run from midnight to midnight UTC.
+            val first = Math.floorDiv(c.getLong(1), DAY_MS)
+            val last = Math.floorDiv(c.getLong(2) - 1, DAY_MS)
+            for (day in first..last) days += day
         }
-        return days.toLongArray()
+        return daysOff.toLongArray() to others.toLongArray()
     }
 
     /** The phone's battery in percent, or -1 if unknown. */
@@ -135,7 +139,9 @@ object EventSync {
         val now = System.currentTimeMillis()
         val request = PutDataMapRequest.create(EVENTS_PATH).apply {
             dataMap.putLongArray(KEY_EVENTS, events)
-            dataMap.putLongArray(KEY_DAYS_OFF, readDaysOff(context))
+            val (daysOff, allDay) = readAllDay(context)
+            dataMap.putLongArray(KEY_DAYS_OFF, daysOff)
+            dataMap.putLongArray(KEY_ALL_DAY, allDay)
             dataMap.putInt(KEY_PHONE_BATTERY, battery(context))
             dataMap.putInt(KEY_MODE, Settings.mode(context))
             // Changes every time, so the watch hears about each sync even

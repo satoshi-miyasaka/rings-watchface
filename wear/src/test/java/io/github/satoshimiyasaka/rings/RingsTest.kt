@@ -155,4 +155,21 @@ class RingsTest {
         assertEquals(0, Rings.phoneBatteryBits(57, now - 4 * 3_600_000L, now)) // too old
         assertEquals(0, Rings.phoneBatteryBits(-1, now, now))
     }
+
+    @Test
+    fun allDayEventsSplitAcrossTwoTargetsAndGiveWayToDaysOff() {
+        val day = { d: Int -> java.time.LocalDate.of(2026, 10, d).toEpochDay() }
+        // Camping Saturday 17 and Sunday 18; Monday 19 is both a day off and an all-day event.
+        val inputs = Inputs(
+            events = LongArray(0),
+            daysOff = longArrayOf(day(19)),
+            allDay = longArrayOf(day(17), day(18), day(19)),
+        )
+        val flags = Rings.allDayFlags(inputs, now, tokyo)
+        assertEquals((1 shl 0) or (1 shl 6), flags) // Sunday and Saturday
+        val (_, b) = Rings.weekB(IntArray(7), 0, flags)
+        assertEquals((1 shl 19) + 1f, b) // Sunday
+        val (_, m) = Rings.minuteRing(LongArray(0), now, tokyo, allDay = flags)
+        assertEquals((1 shl 21) + 1f, m) // Saturday
+    }
 }

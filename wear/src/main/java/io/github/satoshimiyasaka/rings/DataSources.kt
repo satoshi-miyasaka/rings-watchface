@@ -79,7 +79,11 @@ class WeekADataSource : RingDataSource() {
 class WeekBDataSource : RingDataSource() {
     override val label = "Rings week B"
     override fun values(inputs: Inputs, now: Long, zone: ZoneId) =
-        Rings.weekB(Rings.weekMasks(inputs.events, now, zone), Rings.daysOffFlags(inputs.daysOff, now, zone))
+        Rings.weekB(
+            Rings.weekMasks(inputs.events, now, zone),
+            Rings.daysOffFlags(inputs.daysOff, now, zone),
+            Rings.allDayFlags(inputs, now, zone),
+        )
 }
 
 class MinuteRingDataSource : RingDataSource() {
@@ -88,5 +92,6 @@ class MinuteRingDataSource : RingDataSource() {
         Rings.minuteRing(
             inputs.events, now, zone, inputs.rolling,
             Rings.phoneBatteryBits(inputs.phoneBattery, inputs.syncedAt, now),
+            Rings.allDayFlags(inputs, now, zone),
         )
 }

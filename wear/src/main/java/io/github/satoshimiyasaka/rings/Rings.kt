@@ -9,6 +9,7 @@ import java.time.ZonedDateTime
 const val EVENTS_PATH = "/rings/events"
 const val KEY_EVENTS = "events"
 const val KEY_DAYS_OFF = "days_off"
+const val KEY_ALL_DAY = "all_day"
 const val KEY_PHONE_BATTERY = "phone_battery"
 const val KEY_SYNCED_AT = "synced_at"
 const val KEY_MODE = "mode"
@@ -21,6 +22,8 @@ class Inputs(
     val events: LongArray,
     /** Days off found in the phone's calendar, as epoch days. */
     val daysOff: LongArray = LongArray(0),
+    /** Days with other all-day events, as epoch days. */
+    val allDay: LongArray = LongArray(0),
     /** The phone's battery in percent at [syncedAt], or -1. */
     val phoneBattery: Int = -1,
     val syncedAt: Long = 0,
@@ -52,6 +55,8 @@ class Inputs(
  *   the same days as the week ring.
  * - Phone battery: the minute source's target bits 12-18 hold the percentage
  *   and bit 19 says it is fresh.
+ * - Days with other all-day events: Sunday to Thursday on week B's target
+ *   bits 19-23, Friday and Saturday on the minute source's target bits 20-21.
  * - A target is never 0, so each one carries its bits plus one.
  *
  * The watch face side lives in tools/generate_watchface.py.
@@ -153,17 +158,23 @@ object Rings {
 
     fun minuteRing(
         events: LongArray, now: Long, zone: ZoneId, rolling: Boolean = false, phoneBattery: Int = 0,
+        allDay: Int = 0,
     ): Pair<Float, Float> {
         val m = minuteMask(events, now, zone, rolling)
-        return ((m shr 24) and 0xFFFFFF).toFloat() to
-            ((((m shr 48) and 0xFFF).toInt() or (phoneBattery shl 12)) + 1).toFloat()
+        val high = ((m shr 48) and 0xFFF).toInt() or (phoneBattery shl 12) or ((allDay shr 5) shl 20)
+        return ((m shr 24) and 0xFFFFFF).toFloat() to (high + 1).toFloat()
     }
 
     fun weekA(m: IntArray) =
         (m[0] or (m[1] shl 12)).toFloat() to ((m[2] or (m[3] shl 12)) + 1).toFloat()
 
-    fun weekB(m: IntArray, daysOff: Int = 0) =
-        (m[4] or (m[5] shl 12)).toFloat() to ((m[6] or (daysOff shl 12)) + 1).toFloat()
+    fun weekB(m: IntArray, daysOff: Int = 0, allDay: Int = 0) =
+        (m[4] or (m[5] shl 12)).toFloat() to
+            ((m[6] or (daysOff shl 12) or ((allDay and 0x1F) shl 19)) + 1).toFloat()
+
+    /** Weekday bits for days with all-day events, leaving out the days off. */
+    fun allDayFlags(inputs: Inputs, now: Long, zone: ZoneId): Int =
+        daysOffFlags(inputs.allDay, now, zone) and daysOffFlags(inputs.daysOff, now, zone).inv()
 
     private fun at(date: LocalDate, minutes: Long, zone: ZoneId): ZonedDateTime =
         date.atStartOfDay(zone).plusMinutes(minutes)

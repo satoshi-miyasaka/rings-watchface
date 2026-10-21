@@ -17,6 +17,7 @@ class DataLayerListenerService : WearableListenerService() {
                     Inputs(
                         events = map.getLongArray(KEY_EVENTS) ?: LongArray(0),
                         daysOff = map.getLongArray(KEY_DAYS_OFF) ?: LongArray(0),
+                        allDay = map.getLongArray(KEY_ALL_DAY) ?: LongArray(0),
                         phoneBattery = map.getInt(KEY_PHONE_BATTERY, -1),
                         syncedAt = map.getLong(KEY_SYNCED_AT, 0),
                         mode = map.getInt(KEY_MODE, MODE_PER_LAP),

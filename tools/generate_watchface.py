@@ -38,6 +38,7 @@ RINGS = {
 TRACK_ALPHA = "4D"  # 30 %
 SUNDAY_HOLIDAY = "F2FF8FA3"
 SATURDAY = "F26FA8FF"
+ALL_DAY = "F23DDC84"  # days with an all-day event, such as a trip
 
 HOLIDAY_YEARS = range(2026, 2031)
 
@@ -348,9 +349,21 @@ def companion_slots():
     week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
     week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
 
+    # Days with other all-day events, green on the weekday ring: Sunday to
+    # Thursday on week B's target bits 19-23, Friday and Saturday on the minute
+    # slot's target bits 20-21. The companion app leaves out days off, so the
+    # two never share a day.
+    dow_r = RINGS["dow"][0]
+
+    def all_day(d, shift):
+        return lit_if(f"allDay{d}", bit(f"({T} - 1)", shift),
+                      part_draw(f"allDay{d}", arc(dow_r, d * seg, (d + 1) * seg, ALL_DAY)))
+
+    all_day_b = "".join(all_day(d, 19 + d) for d in range(5))
+    all_day_minute = "".join(all_day(d, 20 + d - 5) for d in range(5, 7))
+
     # Days off found in the phone's calendar ("有給" and so on), bit 12 + weekday
     # of week B's target, coloured like holidays on the weekday ring.
-    dow_r = RINGS["dow"][0]
     days_off = "".join(
         lit_if(f"dayOff{d}", bit(f"({T} - 1)", 12 + d),
                part_draw(f"dayOff{d}", arc(dow_r, d * seg, (d + 1) * seg, SUNDAY_HOLIDAY)))
@@ -372,8 +385,8 @@ def companion_slots():
     return (
         data_slot(1, "ring_hour", "HourRingDataSource", hour + minutes_low)
         + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
-        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b + days_off)
-    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high + phone_battery)
+        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b + all_day_b + days_off)
+    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high + all_day_minute + phone_battery)
 
 
 def watchface_xml():

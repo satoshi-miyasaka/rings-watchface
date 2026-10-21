@@ -8,6 +8,24 @@ import java.time.ZonedDateTime
 /** Shared with the mobile module: where the event list lives in the Data Layer. */
 const val EVENTS_PATH = "/rings/events"
 const val KEY_EVENTS = "events"
+const val KEY_DAYS_OFF = "days_off"
+const val KEY_PHONE_BATTERY = "phone_battery"
+const val KEY_SYNCED_AT = "synced_at"
+const val KEY_MODE = "mode"
+const val MODE_PER_LAP = 0
+const val MODE_EVERY_FIVE_MINUTES = 1
+
+/** Everything the phone sends, as kept on the watch. */
+class Inputs(
+    /** Start/end pairs flattened as [start0, end0, start1, end1, ...]. */
+    val events: LongArray,
+    /** Days off found in the phone's calendar, as epoch days. */
+    val daysOff: LongArray = LongArray(0),
+    /** The phone's battery in percent at [syncedAt], or -1. */
+    val phoneBattery: Int = -1,
+    val syncedAt: Long = 0,
+    val mode: Int = MODE_PER_LAP,
+)
 
 /**
  * Packs the events into numbers for the watch face.
@@ -16,9 +34,11 @@ const val KEY_EVENTS = "events"
  * travel as bits inside GOAL_PROGRESS values. Each value stays at or below
  * 2^24 so that it survives the trip through a 32-bit float exactly.
  *
- * Each ring shows the lap its hand is on and moves to the next lap all at
- * once when the hand completes it, so segments the hand has passed keep
- * showing this lap's events.
+ * The hour and minute rings switch in one of two modes. Per lap, a ring shows
+ * the lap its hand is on and moves to the next lap all at once when the hand
+ * completes it, so segments the hand has passed keep showing this lap's
+ * events. Every five minutes, segments the hand has passed show the next lap
+ * instead, updated every five minutes. The week ring always switches at 0:00.
  *
  * - Hour ring: 24 half-hour segments of the 12-hour dial, bit i = the segment
  *   starting at i * 30 minutes after 0:00 or 12:00, whichever half of the day
@@ -28,6 +48,10 @@ const val KEY_EVENTS = "events"
  * - Minute ring: 60 one-minute segments of the current clock hour, bit k =
  *   minute k. Bits 0-23 ride on the hour source's target, bits 24-59 on the
  *   minute source.
+ * - Days off: week B's target bits 12-18, one per weekday (Sunday = 0), for
+ *   the same days as the week ring.
+ * - Phone battery: the minute source's target bits 12-18 hold the percentage
+ *   and bit 19 says it is fresh.
  * - A target is never 0, so each one carries its bits plus one.
  *
  * The watch face side lives in tools/generate_watchface.py.
@@ -40,6 +64,9 @@ object Rings {
     private const val HALF_HOUR_MIN = 30L
     private const val BLOCK_MIN = 120L
 
+    // The phone syncs hourly; past this its battery reading is left off the ring.
+    private const val BATTERY_FRESH_MS = 3 * 60 * 60 * 1000L
+
     /** True if any [start, end) pair in [events] overlaps [from, to). */
     fun busy(events: LongArray, from: Long, to: Long): Boolean {
         var i = 0
@@ -50,23 +77,26 @@ object Rings {
         return false
     }
 
-    fun hourMask(events: LongArray, now: Long, zone: ZoneId): Int {
+    /** With [rolling], segments that have ended show the next lap. */
+    fun hourMask(events: LongArray, now: Long, zone: ZoneId, rolling: Boolean = false): Int {
         val time = Instant.ofEpochMilli(now).atZone(zone)
         val lapStart = if (time.hour < 12) 0L else 12 * 60L
         var mask = 0
         for (i in 0 until HOUR_SEGMENTS) {
-            val start = at(time.toLocalDate(), lapStart + i * HALF_HOUR_MIN, zone)
+            var start = at(time.toLocalDate(), lapStart + i * HALF_HOUR_MIN, zone)
+            if (rolling && start.plusMinutes(HALF_HOUR_MIN).toEpochMilli() <= now) start = start.plusHours(12)
             val end = start.plusMinutes(HALF_HOUR_MIN)
             if (busy(events, start.toEpochMilli(), end.toEpochMilli())) mask = mask or (1 shl i)
         }
         return mask
     }
 
-    fun minuteMask(events: LongArray, now: Long, zone: ZoneId): Long {
+    fun minuteMask(events: LongArray, now: Long, zone: ZoneId, rolling: Boolean = false): Long {
         val hour = Instant.ofEpochMilli(now).atZone(zone).withMinute(0).withSecond(0).withNano(0)
         var mask = 0L
         for (k in 0 until MINUTE_SEGMENTS) {
-            val start = hour.plusMinutes(k.toLong())
+            var start = hour.plusMinutes(k.toLong())
+            if (rolling && start.plusMinutes(1).toEpochMilli() <= now) start = start.plusHours(1)
             if (busy(events, start.toEpochMilli(), start.plusMinutes(1).toEpochMilli())) mask = mask or (1L shl k)
         }
         return mask
@@ -88,31 +118,52 @@ object Rings {
         }
     }
 
+    /** One bit per weekday, Sunday first, for the days off among the week ring's days. */
+    fun daysOffFlags(daysOff: LongArray, now: Long, zone: ZoneId): Int {
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        var flags = 0
+        for (i in 0L until 7L) {
+            val date = today.plusDays(i)
+            if (date.toEpochDay() in daysOff) flags = flags or (1 shl (date.dayOfWeek.value % 7))
+        }
+        return flags
+    }
+
+    /** The phone's battery and a fresh flag (bit 7), or 0 once the last sync is too old. */
+    fun phoneBatteryBits(battery: Int, syncedAt: Long, now: Long): Int =
+        if (battery in 0..100 && now - syncedAt in 0 until BATTERY_FRESH_MS) battery or (1 shl 7) else 0
+
     /**
-     * When the rings may change over the coming [hours]: now, then every top
-     * of the hour, which covers the minute ring's hourly lap and the hour and
-     * week rings' changes at 0:00 and 12:00. The last time ends the timeline.
+     * When the rings may change over the coming [hours]: now, then every
+     * [stepMinutes] on the clock. Steps of an hour cover the minute ring's
+     * hourly lap and the hour and week rings' changes at 0:00 and 12:00. The
+     * last time ends the timeline.
      */
-    fun switchTimes(now: Long, zone: ZoneId, hours: Int = 24): List<Long> {
+    fun switchTimes(now: Long, zone: ZoneId, hours: Int = 24, stepMinutes: Long = 60): List<Long> {
         val hour = Instant.ofEpochMilli(now).atZone(zone).withMinute(0).withSecond(0).withNano(0)
-        return listOf(now) + (1..hours).map { hour.plusHours(it.toLong()).toEpochMilli() }
+        val first = generateSequence(hour) { it.plusMinutes(stepMinutes) }.first { it.toEpochMilli() > now }
+        val steps = hours * 60L / stepMinutes
+        return listOf(now) + (0L until steps).map { first.plusMinutes(it * stepMinutes).toEpochMilli() }
     }
 
     /** Values for the four data sources: (value, target) each. */
-    fun hourRing(events: LongArray, now: Long, zone: ZoneId) =
-        hourMask(events, now, zone).toFloat() to
-            ((minuteMask(events, now, zone) and 0xFFFFFF).toInt() + 1).toFloat()
+    fun hourRing(events: LongArray, now: Long, zone: ZoneId, rolling: Boolean = false) =
+        hourMask(events, now, zone, rolling).toFloat() to
+            ((minuteMask(events, now, zone, rolling) and 0xFFFFFF).toInt() + 1).toFloat()
 
-    fun minuteRing(events: LongArray, now: Long, zone: ZoneId): Pair<Float, Float> {
-        val m = minuteMask(events, now, zone)
-        return ((m shr 24) and 0xFFFFFF).toFloat() to (((m shr 48) and 0xFFF).toInt() + 1).toFloat()
+    fun minuteRing(
+        events: LongArray, now: Long, zone: ZoneId, rolling: Boolean = false, phoneBattery: Int = 0,
+    ): Pair<Float, Float> {
+        val m = minuteMask(events, now, zone, rolling)
+        return ((m shr 24) and 0xFFFFFF).toFloat() to
+            ((((m shr 48) and 0xFFF).toInt() or (phoneBattery shl 12)) + 1).toFloat()
     }
 
     fun weekA(m: IntArray) =
         (m[0] or (m[1] shl 12)).toFloat() to ((m[2] or (m[3] shl 12)) + 1).toFloat()
 
-    fun weekB(m: IntArray) =
-        (m[4] or (m[5] shl 12)).toFloat() to (m[6] + 1).toFloat()
+    fun weekB(m: IntArray, daysOff: Int = 0) =
+        (m[4] or (m[5] shl 12)).toFloat() to ((m[6] or (daysOff shl 12)) + 1).toFloat()
 
     private fun at(date: LocalDate, minutes: Long, zone: ZoneId): ZonedDateTime =
         date.atStartOfDay(zone).plusMinutes(minutes)

@@ -9,7 +9,7 @@ changing HOLIDAY_YEARS and re-running:
 
 Outputs:
     app/src/main/res/raw/watchface.xml
-    app/src/main/res/drawable-nodpi/hand_*.png
+    app/src/main/res/drawable-nodpi/hand_*.png (one per ring and marker shape)
     app/src/main/res/drawable-nodpi/preview.png
 """
 
@@ -41,10 +41,33 @@ SATURDAY = "F26FA8FF"
 
 HOLIDAY_YEARS = range(2026, 2031)
 
-# Marker shape and size per ring, so the hands stay distinguishable in ambient
-# mode when the ring colours dim: triangles for seconds and minutes, a dot for
-# hours, and a bar across the week and weekday rings for the weekday.
-MARKER = {"sec": ("triangle", 8.4), "min": ("triangle", 10.3), "hour": ("dot", 7.0), "dow": ("bar", 3.9)}
+# Marker shapes the editor offers for the second, minute and hour hands, and
+# each hand's default. Distinct shapes keep the hands apart in ambient mode,
+# when the ring colours dim. Sizes are per ring so the shapes stay in proportion.
+HAND_SHAPES = ("triangle", "dot", "line")
+HAND_DEFAULT = {"sec": "triangle", "min": "triangle", "hour": "dot"}
+TRIANGLE = {"sec": 8.4, "min": 10.3, "hour": 10.3}
+DOT = {"sec": 6.0, "min": 6.5, "hour": 7.0}
+LINE = 3.9
+# The weekday marker is a bar across the week and weekday rings.
+DOW_BAR = 3.9
+
+# White slits at the 12 hour positions of the second, minute and hour rings,
+# and between the days of the weekday ring, drawn over the black ones. They
+# stay at full brightness in ambient mode, so the time can be read when the
+# rings dim.
+TICK_COLOR = "FFFFFFFF"
+TICK_THICK = {True: 3.6, False: 2.4}  # quarter hours, others
+
+# What the seconds ring can show besides the seconds, as a lit arc from 12
+# o'clock: (option id, percentage expression). The phone's battery comes from
+# the companion app, so it is drawn inside the minute slot instead.
+SEC_VALUES = (
+    ("none", None),
+    ("steps", "clamp([STEP_PERCENT], 0, 100)"),
+    ("watchBattery", "[BATTERY_PERCENT]"),
+    ("phoneBattery", None),
+)
 
 
 # The companion app (wear module) packs ring segments into GOAL_PROGRESS
@@ -137,6 +160,51 @@ def slits(r, n):
             f'<Stroke color="{BG}" thickness="{thick}"/></Line>'
         )
     return "".join(out)
+
+
+def tick_lines():
+    """(x1, y1, x2, y2, thickness) of each white slit."""
+    for ring in ("sec", "min", "hour"):
+        r = RINGS[ring][0]
+        for i in range(12):
+            yield (*point(i * 30, r - RING_WIDTH / 2), *point(i * 30, r + RING_WIDTH / 2),
+                   TICK_THICK[i % 3 == 0])
+    r = RINGS["dow"][0]
+    for i in range(7):  # between the days of the weekday ring
+        a = i * 360 / 7
+        yield (*point(a, r - RING_WIDTH / 2), *point(a, r + RING_WIDTH / 2), TICK_THICK[False])
+
+
+def ticks():
+    return "".join(
+        f'<Line startX="{x1:.2f}" startY="{y1:.2f}" endX="{x2:.2f}" endY="{y2:.2f}">'
+        f'<Stroke color="#{TICK_COLOR}" thickness="{t}"/></Line>'
+        for x1, y1, x2, y2, t in tick_lines()
+    )
+
+
+def value_arc(r, color, percent):
+    """An arc from 12 o'clock that grows with a 0-100 expression."""
+    return (
+        f'<Arc centerX="{C}" centerY="{C}" width="{2 * r}" height="{2 * r}" startAngle="0" endAngle="0">'
+        f'<Stroke color="#{color}" thickness="{RING_WIDTH}" cap="BUTT"/>'
+        f'<Transform target="endAngle" value="({percent}) * 3.6"/></Arc>'
+    )
+
+
+def empty():
+    """Nothing; for list options that draw nothing here."""
+    return f'<Group name="empty" x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
+
+
+def sec_value_options(draw):
+    """The secValue configuration with draw(option id, expression) per option."""
+    return (
+        '<ListConfiguration id="secValue">'
+        + "".join(f'<ListOption id="{opt}">{draw(opt, expr) or empty()}</ListOption>'
+                  for opt, expr in SEC_VALUES)
+        + "</ListConfiguration>"
+    )
 
 
 def text(name, x, y, w, h, size, color, content, weight="BOLD"):
@@ -271,11 +339,32 @@ def companion_slots():
     week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
     week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
 
+    # Days off found in the phone's calendar ("有給" and so on), bit 12 + weekday
+    # of week B's target, coloured like holidays on the weekday ring.
+    dow_r = RINGS["dow"][0]
+    days_off = "".join(
+        lit_if(f"dayOff{d}", bit(f"({T} - 1)", 12 + d),
+               part_draw(f"dayOff{d}", arc(dow_r, d * seg, (d + 1) * seg, SUNDAY_HOLIDAY)))
+        for d in range(7)
+    )
+
+    # The phone's battery, bits 12-18 of the minute slot's target, valid when
+    # bit 19 is set; shown on the seconds ring when chosen in the editor.
+    sec_r, sec_col, _ = RINGS["sec"]
+    battery = f"(floor(({T} - 1) / 4096) % 128)"
+    phone_battery = (
+        f'<Group name="phoneBattery" x="0" y="0" width="{SIZE}" height="{SIZE}">'
+        + sec_value_options(lambda opt, _: opt == "phoneBattery" and lit_if(
+            "phoneBatteryValid", bit(f"({T} - 1)", 19),
+            part_draw("phoneBatteryArc", value_arc(sec_r, LIT_ALPHA + sec_col, battery))))
+        + "</Group>"
+    )
+
     return (
         data_slot(1, "ring_hour", "HourRingDataSource", hour + minutes_low)
         + data_slot(2, "ring_week_a", "WeekADataSource", week_a)
-        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b)
-    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high)
+        + data_slot(3, "ring_week_b", "WeekBDataSource", week_b + days_off)
+    ), data_slot(4, "ring_minute", "MinuteRingDataSource", minutes_high + phone_battery)
 
 
 def watchface_xml():
@@ -284,6 +373,31 @@ def watchface_xml():
     tracks = "".join(arc(r, 0, 360, TRACK_ALPHA + col) for r, col, _ in RINGS.values())
     weekend = arc(RINGS["dow"][0], 0, seg, SUNDAY_HOLIDAY) + arc(RINGS["dow"][0], 6 * seg, 360, SATURDAY)
     all_slits = "".join(slits(r, n) for r, _, n in RINGS.values())
+    sec_r, sec_col, _ = RINGS["sec"]
+    sec_value = sec_value_options(
+        lambda opt, expr: expr and part_draw(f"{opt}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, expr)))
+    tick_marks = (
+        '<BooleanConfiguration id="ticks">'
+        f'<BooleanOption id="TRUE">{part_draw("ticks", ticks())}</BooleanOption>'
+        f'<BooleanOption id="FALSE">{empty()}</BooleanOption>'
+        "</BooleanConfiguration>"
+    )
+
+    def options(ids, prefix):
+        return "".join(f'<ListOption id="{i}" displayName="@string/{prefix}_{i}"/>' for i in ids)
+
+    configurations = (
+        "<UserConfigurations>"
+        '<BooleanConfiguration id="ticks" displayName="@string/cfg_ticks" defaultValue="TRUE"/>'
+        + "".join(
+            f'<ListConfiguration id="hand_{ring}" displayName="@string/cfg_hand_{ring}" '
+            f'defaultValue="{HAND_DEFAULT[ring]}">{options(HAND_SHAPES, "shape")}</ListConfiguration>'
+            for ring in ("sec", "min", "hour")
+        )
+        + '<ListConfiguration id="secValue" displayName="@string/cfg_sec_value" defaultValue="none">'
+        + options([opt for opt, _ in SEC_VALUES], "sec_value")
+        + "</ListConfiguration></UserConfigurations>"
+    )
 
     weekday_angle = "(([DAY_OF_WEEK] - 1) + [HOUR_0_23_MINUTE] / 24) * 360 / 7"
 
@@ -316,14 +430,22 @@ def watchface_xml():
     )
 
     full = f'x="0" y="0" width="{SIZE}" height="{SIZE}" pivotX="0.5" pivotY="0.5"'
-    hands = (
-        f"<AnalogClock {full}>"
-        f'<HourHand resource="hand_hour" {full}/>'
-        f'<MinuteHand resource="hand_min" {full}/>'
-        f'<SecondHand resource="hand_sec" {full}>'
-        '<Variant mode="AMBIENT" target="alpha" value="0"/>'
-        '<Sweep frequency="5"/></SecondHand>'
-        "</AnalogClock>"
+    hand_tags = {"hour": "HourHand", "min": "MinuteHand", "sec": "SecondHand"}
+
+    def hand(ring, shape):
+        tag = hand_tags[ring]
+        inner = ('<Variant mode="AMBIENT" target="alpha" value="0"/><Sweep frequency="5"/>'
+                 if ring == "sec" else "")
+        return (f"<AnalogClock {full}>"
+                f'<{tag} resource="hand_{ring}_{shape}" {full}>{inner}</{tag}>'
+                "</AnalogClock>")
+
+    hands = "".join(
+        f'<ListConfiguration id="hand_{ring}">'
+        + "".join(f'<ListOption id="{shape}">{hand(ring, shape)}</ListOption>' for shape in HAND_SHAPES)
+        + "</ListConfiguration>"
+        for ring in ("hour", "min", "sec")
+    ) + (
         f'<PartImage name="weekdayMarker" {full}>'
         f'<Transform target="angle" value="{weekday_angle}"/>'
         '<Image resource="hand_dow"/></PartImage>'
@@ -334,21 +456,24 @@ def watchface_xml():
 <WatchFace width="{SIZE}" height="{SIZE}" clipShape="CIRCLE">
   <Metadata key="CLOCK_TYPE" value="ANALOG"/>
   <Metadata key="PREVIEW_TIME" value="10:08:32"/>
+  {configurations}
   <Scene backgroundColor="{BG}">
     <Group name="rings" {full}>
       <Variant mode="AMBIENT" target="alpha" value="110"/>
       {part_draw("tracks", tracks)}
       {part_draw("weekend", weekend)}
       {holiday_conditions()}
+      {sec_value}
     </Group>
     {ring_slots}
-    {part_draw("slits", all_slits)}
     <Group name="center" {full}>
       {date_text}
       {weather}
     </Group>
     {complication}
     {minute_slot}
+    {part_draw("slits", all_slits)}
+    {tick_marks}
     {hands}
   </Scene>
 </WatchFace>
@@ -360,30 +485,38 @@ def watchface_xml():
 SS = 4  # supersampling
 
 
-def marker_png(ring):
+def marker_png(ring, shape):
     r = RINGS[ring][0]
-    shape, s = MARKER[ring]
     img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     white, black = (255, 255, 255, 255), (0, 0, 0, 255)
     if shape == "triangle":
+        s = TRIANGLE[ring]
         rb = r + s * 0.75
         half = s * 0.95
         pts = [(C, C - (r - s)), (C - half, C - rb), (C + half, C - rb)]
         pts = [(x * SS, y * SS) for x, y in pts]
         d.polygon(pts, fill=white, outline=black, width=int(1.5 * SS))
     elif shape == "dot":
+        s = DOT[ring]
         box = [(C - s) * SS, (C - r - s) * SS, (C + s) * SS, (C - r + s) * SS]
         d.ellipse(box, fill=white, outline=black, width=int(1.5 * SS))
-    else:  # bar from the outer edge of the week ring to the inner edge of the weekday ring
-        y_out = C - (RINGS["week"][0] + RING_WIDTH / 2)
-        y_in = C - (r - RING_WIDTH / 2)
+    else:
+        if shape == "line":  # across this ring
+            s = LINE
+            y_out = C - (r + RING_WIDTH / 2 + 1.5)
+            y_in = C - (r - RING_WIDTH / 2 - 1.5)
+        else:  # bar from the outer edge of the week ring to the inner edge of the weekday ring
+            s = DOW_BAR
+            y_out = C - (RINGS["week"][0] + RING_WIDTH / 2)
+            y_in = C - (r - RING_WIDTH / 2)
         for width, col in ((s + 3.6, black), (s, white)):
             w = width * SS
             d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),
                                  (C * SS + w / 2, y_in * SS + (w - s * SS) / 2)], radius=w / 2, fill=col)
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
-    img.save(RES / "drawable-nodpi" / f"hand_{ring}.png", optimize=True)
+    name = "hand_dow" if ring == "dow" else f"hand_{ring}_{shape}"
+    img.save(RES / "drawable-nodpi" / f"{name}.png", optimize=True)
 
 
 def preview_png():
@@ -412,11 +545,14 @@ def preview_png():
             x1, y1 = point(a, r - RING_WIDTH / 2 - 1.5)
             x2, y2 = point(a, r + RING_WIDTH / 2 + 1.5)
             d.line([(x1 * SS, y1 * SS), (x2 * SS, y2 * SS)], fill=(0, 0, 0, 255), width=int(thick * SS))
+    for x1, y1, x2, y2, t in tick_lines():  # white slits, on by default
+        d.line([(x1 * SS, y1 * SS), (x2 * SS, y2 * SS)], fill=(255, 255, 255, 255), width=int(t * SS))
 
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
     angles = {"sec": 32 * 6, "min": (8 + 32 / 60) * 6, "hour": (10 + 8 / 60) * 30, "dow": (4 + 10 / 24) * 360 / 7}
     for ring, ang in angles.items():
-        marker = Image.open(RES / "drawable-nodpi" / f"hand_{ring}.png")
+        name = "hand_dow" if ring == "dow" else f"hand_{ring}_{HAND_DEFAULT[ring]}"
+        marker = Image.open(RES / "drawable-nodpi" / f"{name}.png")
         img.alpha_composite(marker.rotate(-ang, resample=Image.BICUBIC, center=(C, C)))
 
     d = ImageDraw.Draw(img)
@@ -439,8 +575,10 @@ def main():
     (RES / "raw").mkdir(parents=True, exist_ok=True)
     (RES / "drawable-nodpi").mkdir(parents=True, exist_ok=True)
     (RES / "raw" / "watchface.xml").write_text(watchface_xml(), encoding="utf-8")
-    for ring in MARKER:
-        marker_png(ring)
+    for ring in HAND_DEFAULT:
+        for shape in HAND_SHAPES:
+            marker_png(ring, shape)
+    marker_png("dow", "bar")
     preview_png()
 
 

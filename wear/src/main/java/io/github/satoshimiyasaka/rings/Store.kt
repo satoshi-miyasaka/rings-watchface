@@ -4,17 +4,33 @@ import android.content.ComponentName
 import android.content.Context
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 
-/** The latest events from the phone, kept on the watch. */
+/** The latest sync from the phone, kept on the watch. */
 object Store {
     private fun prefs(context: Context) =
         context.getSharedPreferences("rings", Context.MODE_PRIVATE)
 
-    fun events(context: Context): LongArray =
-        prefs(context).getString("events", "")!!
-            .split(',').filter { it.isNotEmpty() }.map { it.toLong() }.toLongArray()
+    private fun longs(text: String?): LongArray =
+        text.orEmpty().split(',').filter { it.isNotEmpty() }.map { it.toLong() }.toLongArray()
 
-    fun saveEvents(context: Context, events: LongArray) {
-        prefs(context).edit().putString("events", events.joinToString(",")).apply()
+    fun inputs(context: Context): Inputs {
+        val prefs = prefs(context)
+        return Inputs(
+            events = longs(prefs.getString("events", "")),
+            daysOff = longs(prefs.getString("days_off", "")),
+            phoneBattery = prefs.getInt("phone_battery", -1),
+            syncedAt = prefs.getLong("synced_at", 0),
+            mode = prefs.getInt("mode", MODE_PER_LAP),
+        )
+    }
+
+    fun save(context: Context, inputs: Inputs) {
+        prefs(context).edit()
+            .putString("events", inputs.events.joinToString(","))
+            .putString("days_off", inputs.daysOff.joinToString(","))
+            .putInt("phone_battery", inputs.phoneBattery)
+            .putLong("synced_at", inputs.syncedAt)
+            .putInt("mode", inputs.mode)
+            .apply()
         refreshWatchFace(context)
     }
 

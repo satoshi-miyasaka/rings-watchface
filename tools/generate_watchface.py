@@ -398,7 +398,7 @@ def watchface_xml():
 
     def options(ids, prefix, icon):
         return "".join(
-            f'<ListOption id="{i}" displayName="@string/{prefix}_{i}" icon="{icon}_{i}"/>' for i in ids)
+            f'<ListOption id="{i}" displayName="@string/{prefix}_{i}" icon="{icon}_{i.lower()}"/>' for i in ids)
 
     configurations = (
         "<UserConfigurations>"
@@ -457,7 +457,7 @@ def watchface_xml():
         inner = ('<Variant mode="AMBIENT" target="alpha" value="0"/><Sweep frequency="5"/>'
                  if ring == "sec" else "")
         return (f"<AnalogClock {full}>"
-                f'<{tag} resource="hand_{ring}_{shape}" {full}>{inner}</{tag}>'
+                f'<{tag} resource="hand_{ring}_{shape.lower()}" {full}>{inner}</{tag}>'
                 "</AnalogClock>")
 
     hands = "".join(
@@ -537,7 +537,7 @@ def marker_png(ring, shape):
             d.rounded_rectangle([(C * SS - w / 2, y_out * SS - (w - s * SS) / 2),
                                  (C * SS + w / 2, y_in * SS + (w - s * SS) / 2)], radius=w / 2, fill=col)
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
-    name = "hand_dow" if ring == "dow" else f"hand_{ring}_{shape}"
+    name = "hand_dow" if ring == "dow" else f"hand_{ring}_{shape.lower()}"
     img.save(RES / "drawable-nodpi" / f"{name}.png", optimize=True)
 
 
@@ -556,7 +556,8 @@ def option_icons():
         d.ellipse([0, 0, k - 1, k - 1], fill=(32, 33, 36, 255))
         return img, d
 
-    def save(img, name):
+    def save(img, name):  # Android resource names are lower case
+        name = name.lower()
         img.resize((ICON, ICON), Image.LANCZOS).save(out / f"{name}.png", optimize=True)
 
     white, black = (255, 255, 255, 255), (0, 0, 0, 255)
@@ -640,7 +641,7 @@ def preview_png():
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
     angles = {"sec": 32 * 6, "min": (8 + 32 / 60) * 6, "hour": (10 + 8 / 60) * 30, "dow": (4 + 10 / 24) * 360 / 7}
     for ring, ang in angles.items():
-        name = "hand_dow" if ring == "dow" else f"hand_{ring}_{HAND_DEFAULT[ring]}"
+        name = "hand_dow" if ring == "dow" else f"hand_{ring}_{HAND_DEFAULT[ring].lower()}"
         marker = Image.open(RES / "drawable-nodpi" / f"{name}.png")
         img.alpha_composite(marker.rotate(-ang, resample=Image.BICUBIC, center=(C, C)))
 

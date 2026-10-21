@@ -45,11 +45,7 @@ HOLIDAY_YEARS = range(2026, 2031)
 # each hand's default. Distinct shapes keep the hands apart in ambient mode,
 # when the ring colours dim. Sizes are per ring so the shapes stay in proportion.
 # "triangle" points at the centre (shown as 内向き), "triangleUp" away from it (外向き).
-HAND_SHAPES = {
-    "sec": ("triangle", "dot", "line"),
-    "min": ("triangle", "dot", "line"),
-    "hour": ("triangle", "triangleUp", "dot", "line"),
-}
+HAND_SHAPES = {ring: ("triangle", "triangleUp", "dot", "line") for ring in ("sec", "min", "hour")}
 HAND_DEFAULT = {"sec": "triangle", "min": "triangle", "hour": "dot"}
 TRIANGLE = {"sec": 8.4, "min": 10.3, "hour": 10.3}
 DOT = {"sec": 6.0, "min": 6.5, "hour": 7.0}

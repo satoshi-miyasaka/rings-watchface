@@ -29,4 +29,8 @@
     <string name="sec_value_steps">歩数（目標に対して）</string>
     <string name="sec_value_watchBattery">時計の電池</string>
     <string name="sec_value_phoneBattery">スマホの電池</string>
+    <string name="sec_value_watchPhone">時計とスマホの電池</string>
+    <string name="sec_value_watchSteps">時計の電池と歩数</string>
+    <string name="sec_value_phoneSteps">スマホの電池と歩数</string>
+    <string name="sec_value_all">時計・スマホの電池と歩数</string>
 </resources>

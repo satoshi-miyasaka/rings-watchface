@@ -43,8 +43,8 @@ class Inputs(
  * events. Every five minutes, segments the hand has passed show the next lap
  * instead, updated every five minutes. The week ring always switches at 0:00.
  *
- * - Hour ring: 24 half-hour segments of the 12-hour dial, bit i = the segment
- *   starting at i * 30 minutes after 0:00 or 12:00, whichever half of the day
+ * - Hour ring: 12 one-hour segments of the 12-hour dial, bit i = the segment
+ *   starting at i hours after 0:00 or 12:00, whichever half of the day
  *   it is now.
  * - Week ring: 7 weekdays (Sunday = 0) x 12 two-hour blocks. Today's weekday
  *   holds today, and the others the coming six days; it moves on at 0:00.
@@ -62,11 +62,11 @@ class Inputs(
  * The watch face side lives in tools/generate_watchface.py.
  */
 object Rings {
-    const val HOUR_SEGMENTS = 24
+    const val HOUR_SEGMENTS = 12
     const val WEEK_BLOCKS = 12
     const val MINUTE_SEGMENTS = 60
 
-    private const val HALF_HOUR_MIN = 30L
+    private const val HOUR_MIN = 60L
     private const val BLOCK_MIN = 120L
 
     // The phone syncs hourly; past this its battery reading is left off the ring.
@@ -88,9 +88,9 @@ object Rings {
         val lapStart = if (time.hour < 12) 0L else 12 * 60L
         var mask = 0
         for (i in 0 until HOUR_SEGMENTS) {
-            var start = at(time.toLocalDate(), lapStart + i * HALF_HOUR_MIN, zone)
-            if (rolling && start.plusMinutes(HALF_HOUR_MIN).toEpochMilli() <= now) start = start.plusHours(12)
-            val end = start.plusMinutes(HALF_HOUR_MIN)
+            var start = at(time.toLocalDate(), lapStart + i * HOUR_MIN, zone)
+            if (rolling && start.plusMinutes(HOUR_MIN).toEpochMilli() <= now) start = start.plusHours(12)
+            val end = start.plusMinutes(HOUR_MIN)
             if (busy(events, start.toEpochMilli(), end.toEpochMilli())) mask = mask or (1 shl i)
         }
         return mask

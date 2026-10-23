@@ -72,14 +72,26 @@ TICK_COLORS = (
 )
 TICK_THICK = {True: 3.6, False: 2.4}  # quarter hours, others
 
-# What the seconds ring can show besides the seconds, as a lit arc from 12
-# o'clock: (option id, percentage expression). The phone's battery comes from
+# Values the seconds ring can show besides the seconds, each as a lit arc
+# that grows clockwise: percentage expressions. The phone's battery comes from
 # the companion app, so it is drawn inside the minute slot instead.
+SEC_ITEMS = {
+    "watchBattery": "[BATTERY_PERCENT]",
+    "phoneBattery": None,
+    "steps": "clamp([STEP_PERCENT], 0, 100)",
+}
+# The editor's choices, with the values each shows in this order around the
+# ring: one value takes the whole ring, two split it at 6 and 12 o'clock, three
+# at 4, 8 and 12 o'clock.
 SEC_VALUES = (
-    ("none", None),
-    ("steps", "clamp([STEP_PERCENT], 0, 100)"),
-    ("watchBattery", "[BATTERY_PERCENT]"),
-    ("phoneBattery", None),
+    ("none", ()),
+    ("watchBattery", ("watchBattery",)),
+    ("phoneBattery", ("phoneBattery",)),
+    ("steps", ("steps",)),
+    ("watchPhone", ("watchBattery", "phoneBattery")),
+    ("watchSteps", ("watchBattery", "steps")),
+    ("phoneSteps", ("phoneBattery", "steps")),
+    ("all", ("watchBattery", "phoneBattery", "steps")),
 )
 
 
@@ -193,12 +205,13 @@ def ticks(rings):
     )
 
 
-def value_arc(r, color, percent):
-    """An arc from 12 o'clock that grows with a 0-100 expression."""
+def value_arc(r, color, percent, start=0.0, span=360.0):
+    """An arc from start that grows over span degrees with a 0-100 expression."""
     return (
-        f'<Arc centerX="{C}" centerY="{C}" width="{2 * r}" height="{2 * r}" startAngle="0" endAngle="0">'
+        f'<Arc centerX="{C}" centerY="{C}" width="{2 * r}" height="{2 * r}" '
+        f'startAngle="{start:.2f}" endAngle="{start:.2f}">'
         f'<Stroke color="#{color}" thickness="{RING_WIDTH}" cap="BUTT"/>'
-        f'<Transform target="endAngle" value="({percent}) * 3.6"/></Arc>'
+        f'<Transform target="endAngle" value="{start:.2f} + ({percent}) * {span / 100:.4f}"/></Arc>'
     )
 
 
@@ -208,11 +221,18 @@ def empty():
 
 
 def sec_value_options(draw):
-    """The secValue configuration with draw(option id, expression) per option."""
+    """The secValue configuration; draw(name, item, start, span) gives what to
+    draw for one value at its place, or "" for values drawn elsewhere. name is
+    unique to the option, as expression names must not repeat in the scene."""
+    def option(opt, items):
+        span = 360 / len(items) if items else 0
+        body = "".join(draw(f"{opt}{item[0].upper()}{item[1:]}", item, k * span, span)
+                       for k, item in enumerate(items))
+        return f'<Group name="secValues" x="0" y="0" width="{SIZE}" height="{SIZE}">{body}</Group>'
+
     return (
         '<ListConfiguration id="secValue">'
-        + "".join(f'<ListOption id="{opt}">{draw(opt, expr) or empty()}</ListOption>'
-                  for opt, expr in SEC_VALUES)
+        + "".join(f'<ListOption id="{opt}">{option(opt, items)}</ListOption>' for opt, items in SEC_VALUES)
         + "</ListConfiguration>"
     )
 
@@ -316,11 +336,11 @@ def companion_slots():
     min_r, min_col, _ = RINGS["min"]
     week_r, week_col, _ = RINGS["week"]
 
-    # Hour ring: 24 half-hour segments in the value.
+    # Hour ring: 12 one-hour segments in the value.
     hour = "".join(
         lit_if(f"hourBit{i}", bit(V, i),
-               part_draw(f"hourSeg{i}", arc(hour_r, i * 15, (i + 1) * 15, LIT_ALPHA + hour_col)))
-        for i in range(24)
+               part_draw(f"hourSeg{i}", arc(hour_r, i * 30, (i + 1) * 30, LIT_ALPHA + hour_col)))
+        for i in range(12)
     )
     # Minute ring: 60 one-minute segments. Bits 0-23 ride on this slot's
     # target (plus one), bits 24-59 on the minute slot.
@@ -376,9 +396,10 @@ def companion_slots():
     battery = f"(floor(({T} - 1) / 4096) % 128)"
     phone_battery = (
         f'<Group name="phoneBattery" x="0" y="0" width="{SIZE}" height="{SIZE}">'
-        + sec_value_options(lambda opt, _: opt == "phoneBattery" and lit_if(
-            "phoneBatteryValid", bit(f"({T} - 1)", 19),
-            part_draw("phoneBatteryArc", value_arc(sec_r, LIT_ALPHA + sec_col, battery))))
+        + sec_value_options(lambda name, item, start, span: lit_if(
+            f"{name}Valid", bit(f"({T} - 1)", 19),
+            part_draw(f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, battery, start, span)))
+            if item == "phoneBattery" else "")
         + "</Group>"
     )
 
@@ -397,7 +418,9 @@ def watchface_xml():
     all_slits = "".join(slits(r, n) for r, _, n in RINGS.values())
     sec_r, sec_col, _ = RINGS["sec"]
     sec_value = sec_value_options(
-        lambda opt, expr: expr and part_draw(f"{opt}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, expr)))
+        lambda name, item, start, span: part_draw(
+            f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, SEC_ITEMS[item], start, span))
+        if SEC_ITEMS[item] else "")
     tick_marks = (
         '<ListConfiguration id="tickRings">'
         + "".join(f'<ListOption id="{opt}">{part_draw("ticks", ticks(rings)) if rings else empty()}</ListOption>'
@@ -437,10 +460,10 @@ def watchface_xml():
         '<Expression name="weather"><![CDATA[[WEATHER.IS_AVAILABLE] && !([WEATHER.IS_ERROR])]]></Expression>'
         "</Expressions>"
         '<Compare expression="weather">'
-        + text("weatherText", 125, 196, 200, 44, 30, "FFE8EBF0",
+        + text("weatherText", 135, 246, 180, 34, 18, "FFE8EBF0",
                template("%d° %s", "[WEATHER.TEMPERATURE]", "[WEATHER.CONDITION_NAME]"), weight="MEDIUM")
         + "</Compare><Default>"
-        + text("weatherNone", 125, 196, 200, 44, 30, "FF8B93A1", "--°", weight="MEDIUM")
+        + text("weatherNone", 135, 246, 180, 34, 18, "FF8B93A1", "--°", weight="MEDIUM")
         + "</Default></Condition>"
     )
 
@@ -449,11 +472,11 @@ def watchface_xml():
     event_text = template("%s %s", "[COMPLICATION.TITLE]", "[COMPLICATION.TEXT]")
     complication = (
         '<ComplicationSlot slotId="0" name="nextEvent" displayName="@string/next_event" '
-        'x="135" y="246" width="180" height="34" supportedTypes="LONG_TEXT" isCustomizable="TRUE">'
+        'x="115" y="194" width="220" height="48" supportedTypes="LONG_TEXT" isCustomizable="TRUE">'
         '<DefaultProviderPolicy defaultSystemProvider="NEXT_EVENT" defaultSystemProviderType="LONG_TEXT"/>'
-        '<BoundingBox x="0" y="0" width="180" height="34"/>'
+        '<BoundingBox x="0" y="0" width="220" height="48"/>'
         '<Complication type="LONG_TEXT">'
-        + text("eventLong", 0, 0, 180, 34, 16, "FF5FD4E6", event_text)
+        + text("eventLong", 0, 0, 220, 48, 24, "FF5FD4E6", event_text)
         + "</Complication></ComplicationSlot>"
     )
 
@@ -600,20 +623,24 @@ def option_icons():
                     d.line([p1, p2], fill=white, width=int(4 * u))
         save(img, f"icon_ticks_{opt}")
 
-    labels = {"none": "なし", "steps": "歩数", "watchBattery": "時計", "phoneBattery": "スマホ"}
-    for opt, _ in SEC_VALUES:
+    labels = {"watchBattery": "時計", "phoneBattery": "スマホ", "steps": "歩数"}
+    for opt, items in SEC_VALUES:
         img, d = canvas()
         r = k / 2 - 10 * u
         sec_col = tuple(int(RINGS["sec"][1][i:i + 2], 16) for i in (0, 2, 4))
         d.ellipse([c - r, c - r, c + r, c + r], outline=sec_col + (90,), width=int(8 * u))
-        if opt != "none":
-            d.arc([c - r, c - r, c + r, c + r], -90, 150, fill=sec_col + (255,), width=int(8 * u))
-        size = 22 if len(labels[opt]) < 3 else 17
+        span = 360 / len(items) if items else 0
+        for n in range(len(items)):  # each value about two-thirds full
+            a0 = n * span - 90
+            d.arc([c - r, c - r, c + r, c + r], a0 + 3, a0 + span * 0.66, fill=sec_col + (255,), width=int(8 * u))
+        lines = [labels[i] for i in items] or ["なし"]
+        size = {1: 20, 2: 15, 3: 13}[len(lines)]
         try:
             font = ImageFont.truetype(font_path, int(size * u))
         except OSError:
             font = ImageFont.load_default()
-        d.text((c, c), labels[opt], font=font, fill=white, anchor="mm")
+        d.multiline_text((c, c), "\n".join(lines), font=font, fill=white, anchor="mm", align="center",
+                         spacing=int(2 * u))
         save(img, f"icon_sec_{opt}")
 
 
@@ -664,8 +691,8 @@ def preview_png():
     else:
         small = big = ImageFont.load_default()
     d.text((C, 175), "10月15日 木", font=small, fill=(139, 147, 161, 255), anchor="mm")
-    d.text((C, 218), "18° 晴れ", font=big, fill=(232, 235, 240, 255), anchor="mm")
-    d.text((C, 263), "14:00 デザインレ…", font=small, fill=(95, 212, 230, 255), anchor="mm")
+    d.text((C, 218), "14:00 デザイン…", font=big, fill=(95, 212, 230, 255), anchor="mm")
+    d.text((C, 263), "18° 晴れ", font=small, fill=(232, 235, 240, 255), anchor="mm")
     img.convert("RGB").save(RES / "drawable-nodpi" / "preview.png", optimize=True)
 
 

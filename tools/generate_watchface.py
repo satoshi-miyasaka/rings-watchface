@@ -444,17 +444,16 @@ def watchface_xml():
         + "</Default></Condition>"
     )
 
+    # LONG_TEXT only: picking the next event again in the editor otherwise
+    # lands on its SHORT_TEXT form, which carries the time without the title.
     event_text = template("%s %s", "[COMPLICATION.TITLE]", "[COMPLICATION.TEXT]")
     complication = (
         '<ComplicationSlot slotId="0" name="nextEvent" displayName="@string/next_event" '
-        'x="135" y="246" width="180" height="34" supportedTypes="LONG_TEXT SHORT_TEXT" isCustomizable="TRUE">'
+        'x="135" y="246" width="180" height="34" supportedTypes="LONG_TEXT" isCustomizable="TRUE">'
         '<DefaultProviderPolicy defaultSystemProvider="NEXT_EVENT" defaultSystemProviderType="LONG_TEXT"/>'
         '<BoundingBox x="0" y="0" width="180" height="34"/>'
         '<Complication type="LONG_TEXT">'
         + text("eventLong", 0, 0, 180, 34, 16, "FF5FD4E6", event_text)
-        + "</Complication>"
-        '<Complication type="SHORT_TEXT">'
-        + text("eventShort", 0, 0, 180, 34, 16, "FF5FD4E6", event_text)
         + "</Complication></ComplicationSlot>"
     )
 

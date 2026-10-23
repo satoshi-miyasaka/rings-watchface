@@ -221,16 +221,18 @@ def empty():
 
 
 def sec_value_options(draw):
-    """The secValue configuration; draw(item, start, span) gives what to draw
-    for one value at its place, or "" for values drawn elsewhere."""
-    def option(items):
+    """The secValue configuration; draw(name, item, start, span) gives what to
+    draw for one value at its place, or "" for values drawn elsewhere. name is
+    unique to the option, as expression names must not repeat in the scene."""
+    def option(opt, items):
         span = 360 / len(items) if items else 0
-        body = "".join(draw(item, k * span, span) for k, item in enumerate(items))
+        body = "".join(draw(f"{opt}{item[0].upper()}{item[1:]}", item, k * span, span)
+                       for k, item in enumerate(items))
         return f'<Group name="secValues" x="0" y="0" width="{SIZE}" height="{SIZE}">{body}</Group>'
 
     return (
         '<ListConfiguration id="secValue">'
-        + "".join(f'<ListOption id="{opt}">{option(items)}</ListOption>' for opt, items in SEC_VALUES)
+        + "".join(f'<ListOption id="{opt}">{option(opt, items)}</ListOption>' for opt, items in SEC_VALUES)
         + "</ListConfiguration>"
     )
 
@@ -394,9 +396,9 @@ def companion_slots():
     battery = f"(floor(({T} - 1) / 4096) % 128)"
     phone_battery = (
         f'<Group name="phoneBattery" x="0" y="0" width="{SIZE}" height="{SIZE}">'
-        + sec_value_options(lambda item, start, span: lit_if(
-            "phoneBatteryValid", bit(f"({T} - 1)", 19),
-            part_draw("phoneBatteryArc", value_arc(sec_r, LIT_ALPHA + sec_col, battery, start, span)))
+        + sec_value_options(lambda name, item, start, span: lit_if(
+            f"{name}Valid", bit(f"({T} - 1)", 19),
+            part_draw(f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, battery, start, span)))
             if item == "phoneBattery" else "")
         + "</Group>"
     )
@@ -416,8 +418,8 @@ def watchface_xml():
     all_slits = "".join(slits(r, n) for r, _, n in RINGS.values())
     sec_r, sec_col, _ = RINGS["sec"]
     sec_value = sec_value_options(
-        lambda item, start, span: part_draw(
-            f"{item}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, SEC_ITEMS[item], start, span))
+        lambda name, item, start, span: part_draw(
+            f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, SEC_ITEMS[item], start, span))
         if SEC_ITEMS[item] else "")
     tick_marks = (
         '<ListConfiguration id="tickRings">'

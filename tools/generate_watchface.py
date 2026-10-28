@@ -265,7 +265,7 @@ def sec_value_options(draw, weather=False, with_weather=False):
         prefix = f"w{opt[0].upper()}{opt[1:]}" if weather else opt
         start, total = (180, 180) if weather else (0, 360)
         span = total / len(items) if items else 0
-        body = weather_steps(prefix, full=not items) if with_weather else ""
+        body = weather_steps(prefix, full=not items) if weather and with_weather else ""
         body += "".join(draw(f"{prefix}{item[0].upper()}{item[1:]}", item, start + k * span, span)
                         for k, item in enumerate(items))
         return f'<Group name="secValues" x="0" y="0" width="{SIZE}" height="{SIZE}">{body}</Group>'

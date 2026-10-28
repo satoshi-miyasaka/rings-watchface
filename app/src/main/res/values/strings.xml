@@ -25,6 +25,7 @@
     <string name="shape_dot">丸</string>
     <string name="shape_line">線</string>
     <string name="cfg_sec_value">秒のリングに表示</string>
+    <string name="cfg_sec_weather">秒のリングに天気</string>
     <string name="sec_value_none">なし</string>
     <string name="sec_value_steps">歩数（目標に対して）</string>
     <string name="sec_value_watchBattery">時計の電池</string>

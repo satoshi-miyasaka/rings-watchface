@@ -39,6 +39,18 @@ TRACK_ALPHA = "4D"  # 30 %
 SUNDAY_HOLIDAY = "F2FF8FA3"
 SATURDAY = "F26FA8FF"
 ALL_DAY = "F23DDC84"  # days with an all-day event, such as a trip
+# Weather can share the seconds ring, one five-second step per forecast.
+# WFF gives one condition (0-15) per hour or day, grouped here into five
+# colours; 0 (unknown) leaves the step dark.
+WEATHER_GROUPS = (
+    ("Clear", "F2FFA94D", (1, 8, 14)),  # clear, sunny, partly cloudy
+    ("Cloudy", "F29AA0A6", (2, 3, 13)),  # cloudy, fog, mist
+    ("Rain", "F24D9BFF", (4, 6, 12)),  # heavy rain, rain, light rain
+    ("Snow", "F2F0F0F0", (5, 7, 10, 11)),  # heavy snow, snow, sleet, light snow
+    ("Storm", "F2B07CFF", (9, 15)),  # thunderstorm, windy
+)
+WEATHER_STEP = 30  # degrees, five seconds
+FIRST_FORECAST_DAY = 1  # tomorrow; the hourly forecast covers today
 
 HOLIDAY_YEARS = range(2026, 2031)
 
@@ -220,20 +232,62 @@ def empty():
     return f'<Group name="empty" x="0" y="0" width="{SIZE}" height="{SIZE}"/>'
 
 
-def sec_value_options(draw):
+def weather_steps(name, full):
+    """Forecast colours from 0 seconds: hourly for 40 seconds then daily for
+    20 on the whole ring, or 20 and 10 on the first half."""
+    r = RINGS["sec"][0]
+    hours, days = (8, 4) if full else (4, 2)
+    fields = [(f"[WEATHER.HOURS.{i}.IS_AVAILABLE]", f"[WEATHER.HOURS.{i}.CONDITION]") for i in range(hours)]
+    fields += [(f"[WEATHER.DAYS.{d}.IS_AVAILABLE]", f"[WEATHER.DAYS.{d}.CONDITION_DAY]")
+               for d in range(FIRST_FORECAST_DAY, FIRST_FORECAST_DAY + days)]
+    out = []
+    for k, (available, cond) in enumerate(fields):
+        exprs, compares = [], []
+        for group, color, values in WEATHER_GROUPS:
+            e = f"{name}W{k}{group}"
+            test = " || ".join(f"{cond} == {v}" for v in values)
+            exprs.append(f'<Expression name="{e}"><![CDATA[{available} && ({test})]]></Expression>')
+            compares.append(f'<Compare expression="{e}">'
+                            + part_draw(e, arc(r, k * WEATHER_STEP, (k + 1) * WEATHER_STEP, color))
+                            + "</Compare>")
+        out.append("<Condition><Expressions>" + "".join(exprs) + "</Expressions>" + "".join(compares) + "</Condition>")
+    return "".join(out)
+
+
+def sec_value_options(draw, weather=False, with_weather=False):
     """The secValue configuration; draw(name, item, start, span) gives what to
     draw for one value at its place, or "" for values drawn elsewhere. name is
-    unique to the option, as expression names must not repeat in the scene."""
+    unique to the option, as expression names must not repeat in the scene.
+
+    With weather on, the values share the second half of the ring, and
+    with_weather also draws the forecast in front of them."""
     def option(opt, items):
-        span = 360 / len(items) if items else 0
-        body = "".join(draw(f"{opt}{item[0].upper()}{item[1:]}", item, k * span, span)
-                       for k, item in enumerate(items))
+        prefix = f"w{opt[0].upper()}{opt[1:]}" if weather else opt
+        start, total = (180, 180) if weather else (0, 360)
+        span = total / len(items) if items else 0
+        body = weather_steps(prefix, full=not items) if with_weather else ""
+        body += "".join(draw(f"{prefix}{item[0].upper()}{item[1:]}", item, start + k * span, span)
+                        for k, item in enumerate(items))
         return f'<Group name="secValues" x="0" y="0" width="{SIZE}" height="{SIZE}">{body}</Group>'
 
     return (
         '<ListConfiguration id="secValue">'
         + "".join(f'<ListOption id="{opt}">{option(opt, items)}</ListOption>' for opt, items in SEC_VALUES)
         + "</ListConfiguration>"
+    )
+
+
+def sec_ring_options(draw, with_weather=False):
+    """sec_value_options for weather on and off, under the secWeather switch."""
+    def group(weather):
+        return (f'<Group name="secRing" x="0" y="0" width="{SIZE}" height="{SIZE}">'
+                + sec_value_options(draw, weather, with_weather) + "</Group>")
+
+    return (
+        '<BooleanConfiguration id="secWeather">'
+        f'<BooleanOption id="TRUE">{group(True)}</BooleanOption>'
+        f'<BooleanOption id="FALSE">{group(False)}</BooleanOption>'
+        "</BooleanConfiguration>"
     )
 
 
@@ -396,7 +450,7 @@ def companion_slots():
     battery = f"(floor(({T} - 1) / 4096) % 128)"
     phone_battery = (
         f'<Group name="phoneBattery" x="0" y="0" width="{SIZE}" height="{SIZE}">'
-        + sec_value_options(lambda name, item, start, span: lit_if(
+        + sec_ring_options(lambda name, item, start, span: lit_if(
             f"{name}Valid", bit(f"({T} - 1)", 19),
             part_draw(f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, battery, start, span)))
             if item == "phoneBattery" else "")
@@ -417,10 +471,10 @@ def watchface_xml():
     weekend = arc(RINGS["dow"][0], 0, seg, SUNDAY_HOLIDAY) + arc(RINGS["dow"][0], 6 * seg, 360, SATURDAY)
     all_slits = "".join(slits(r, n) for r, _, n in RINGS.values())
     sec_r, sec_col, _ = RINGS["sec"]
-    sec_value = sec_value_options(
+    sec_value = sec_ring_options(
         lambda name, item, start, span: part_draw(
             f"{name}Arc", value_arc(sec_r, LIT_ALPHA + sec_col, SEC_ITEMS[item], start, span))
-        if SEC_ITEMS[item] else "")
+        if SEC_ITEMS[item] else "", with_weather=True)
     tick_marks = (
         '<ListConfiguration id="tickRings">'
         + "".join(f'<ListOption id="{opt}">{part_draw("ticks", ticks(rings)) if rings else empty()}</ListOption>'
@@ -448,7 +502,9 @@ def watchface_xml():
         )
         + '<ListConfiguration id="secValue" displayName="@string/cfg_sec_value" defaultValue="none">'
         + options([opt for opt, _ in SEC_VALUES], "sec_value", "icon_sec")
-        + "</ListConfiguration></UserConfigurations>"
+        + "</ListConfiguration>"
+        '<BooleanConfiguration id="secWeather" displayName="@string/cfg_sec_weather" defaultValue="FALSE"/>'
+        "</UserConfigurations>"
     )
 
     weekday_angle = "(([DAY_OF_WEEK] - 1) + [HOUR_0_23_MINUTE] / 24) * 360 / 7"

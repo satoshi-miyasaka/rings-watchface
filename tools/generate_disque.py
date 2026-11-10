@@ -15,7 +15,7 @@ Outputs:
 
 Everything else is drawn with PartDraw and PartText, so the face needs only
 a few small images. The disc numerals use Cormorant Garamond (SIL OFL,
-disque/src/main/res/font/cormorant_semibold.ttf, a Latin subset of the 600
+disque/src/main/res/font/cormorant_bold.ttf, a Latin subset of the 700
 weight).
 """
 
@@ -33,12 +33,12 @@ RES = ROOT / "disque" / "src" / "main" / "res"
 
 SIZE = 450
 C = SIZE / 2
-HW = 8.5  # half the width of a disc's band
+HW = 10.0  # half the width of a disc's band
 
 # Discs from the outside in, as in Rings: radius of the band's centre line.
-R = {"sec": 197.0, "min": 172.5, "hour": 148.0, "week": 123.5, "dow": 99.5}
+R = {"sec": 195.5, "min": 171.5, "hour": 147.5, "week": 123.5, "dow": 99.5}
 FLANGE_R = 221.0
-CENTER_R = 91.0
+CENTER_R = 89.5
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
 MOON_R = 32.0
 
@@ -61,14 +61,14 @@ NIGHT = "FF18264D"
 MOON_GOLD = "FFE2BC62"
 # Ambient: black dial, grey print, lume for what is coming up.
 LUME = "FF9FDCC4"
-AMB_INK = "FF6B6F76"
-AMB_LINE = "FF34373C"
+AMB_INK = "FFB4B8BE"
+AMB_LINE = "FF55595F"
 AMB_RED = "FFA05A55"
 AMB_BLUE = "FF566D9C"
 AMB_GREEN = "FF4F7A62"
 
 BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "week": BAND_B, "dow": BAND_A}
-FONT = "cormorant_semibold"
+FONT = "cormorant_bold"
 SEG = 360 / 7
 
 # How far each disc turns so that now sits under the window. The seconds
@@ -205,10 +205,10 @@ def lit(name, r, a0, a1, color, width, ambient=LUME, ambient_alpha=150):
 # ---------------------------------------------------------------- the dial
 
 # Where events sit on each disc: (radius, width).
-MIN_EVENT = (R["min"] + 6.25, 4.5)
-HOUR_EVENT = (R["hour"] + 5.75, 5.5)
-WEEK_EVENT = (R["week"], 15.5)
-DAY_MARK = (R["dow"] + 6.5, 3.4)  # weekends, holidays, days off, all-day events
+MIN_EVENT = (R["min"] + 7.5, 5.0)
+HOUR_EVENT = (R["hour"] + 7.5, 5.0)
+WEEK_EVENT = (R["week"], 18.5)
+DAY_MARK = (R["dow"] + 8.0, 4.0)  # weekends, holidays, days off, all-day events
 
 
 def dial():
@@ -231,19 +231,18 @@ def disc_print(ink, mode):
     out = []
     if mode == "active":  # the seconds disc stays out of ambient
         r = R["sec"]
-        body = draw("secTicks", radial_ticks(r + HW, r + HW - 2.8, 60, ink, 0.7, skip=5)
-                    + radial_ticks(r + HW, r + HW - 4.7, 12, ink, 0.7))
-        body += "".join(on_disc(f"sec{i}", i * 30, r - 0.5, 26, 15, 11, ink, f"{i * 5:02d}") for i in range(12))
+        body = draw("secTicks", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
+        body += "".join(on_disc(f"sec{i}", i * 30, r - 1, 30, 18, 14, ink, f"{i * 5:02d}") for i in range(12))
         out.append(group("secDisc", body, turn=TURN["sec"], mode=mode))
 
     r = R["min"]
     body = draw(f"minTicks{mode}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
-    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 3.3, 30, 18, 13, ink, f"{i * 5:02d}") for i in range(12))
+    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 2.5, 36, 20, 17, ink, f"{i * 5:02d}") for i in range(12))
     out.append(group(f"minDisc{mode}", body, turn=TURN["min"], mode=mode))
 
     r = R["hour"]
     body = draw(f"hourTicks{mode}", radial_ticks(r + HW, r - HW, 12, ink, 0.9))
-    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 7, r - 3.5, 30, 15, 11, ink, ROMAN[i]) for i in range(12))
+    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 8, r - 2.5, 40, 19, 15, ink, ROMAN[i]) for i in range(12))
     out.append(group(f"hourDisc{mode}", body, turn=TURN["hour"], mode=mode))
 
     r = R["week"]
@@ -253,7 +252,7 @@ def disc_print(ink, mode):
 
     r = R["dow"]
     body = draw(f"dowTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
-    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 14, r - 0.5, 34, 15, 11, ink, DOW_NAMES[i],
+    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 10, r - 1.5, 44, 18, 14, ink, DOW_NAMES[i],
                             spacing=0.1) for i in range(7))
     out.append(group(f"dowDisc{mode}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
@@ -328,9 +327,9 @@ def gauge_parts(battery, valid):
                    + f'<PartDraw name="gaugeMarkerAmb" x="0" y="0" width="120" height="120" alpha="0">'
                    f"{SHOW_IN_AMBIENT}{line(60, 60 - 35.5, 60, 60 - 41, LUME, 2.6, 'ROUND')}</PartDraw>",
                    turn=angle, box=box)
-    label = (text("gaugeLabel", cx - 50, 158, 100, 14, 10, MUTED, template("phone %d", battery),
+    label = (text("gaugeLabel", cx - 50, 156, 100, 16, 12, MUTED, template("phone %d", battery),
                   spacing=0.08, mode="active")
-             + text("gaugeLabelAmb", cx - 50, 158, 100, 14, 10, AMB_INK, template("phone %d", battery),
+             + text("gaugeLabelAmb", cx - 50, 156, 100, 16, 12, AMB_INK, template("phone %d", battery),
                     spacing=0.08, mode="ambient"))
     return condition("phoneValid", valid, fill + marker + label)
 
@@ -373,7 +372,7 @@ def companion_slots():
 
 # ---------------------------------------------------------------- weather
 
-ICON = 12  # icon size on the face
+ICON = 17  # icon size on the face
 
 
 def weather_icon(prefix, avail, cond, angle, r):
@@ -387,23 +386,18 @@ def weather_icon(prefix, avail, cond, angle, r):
 
 def forecasts():
     out = []
-    r = R["hour"] - 3.5
+    r = R["hour"] - 2.5
     for k in range(HOURLY):
         avail = f"[WEATHER.HOURS.{k}.IS_AVAILABLE]"
         # The hour starting k hours after this one, relative to the window.
         turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
-        body = (weather_icon(f"wxH{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 16.5, r)
-                + group(f"wxH{k}Temp", text(f"wxH{k}T", C - 15, C - r - 7.5, 30, 15, 10, INK,
-                                             template("%d°", f"[WEATHER.HOURS.{k}.TEMPERATURE]")), angle=24.5))
+        body = weather_icon(f"wxH{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 22, r)
         out.append(group(f"wxHour{k}", condition(f"wxH{k}On", avail, body), turn=turn, mode="active"))
-    r = R["dow"] - 0.5
+    r = R["dow"] - 1.5
     for d in range(DAILY):
         avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
         turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
-        body = (weather_icon(f"wxD{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 1, r)
-                + group(f"wxD{d}Temp", text(f"wxD{d}T", C - 20, C - r - 7.5, 40, 15, 10, INK,
-                                             template("%d°/%d°", f"[WEATHER.DAYS.{d}.TEMPERATURE_HIGH]",
-                                                      f"[WEATHER.DAYS.{d}.TEMPERATURE_LOW]")), angle=15.5))
+        body = weather_icon(f"wxD{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 11, r)
         out.append(group(f"wxDay{d}", condition(f"wxD{d}On", avail, body), turn=turn, mode="active"))
     return "".join(out)
 
@@ -441,24 +435,24 @@ def gauge_static():
 
 
 def centre():
-    rings_logo = (text("logo", C - 60, 142, 120, 20, 17, INK, "RINGS", spacing=0.35, mode="active")
-                  + text("logoAmb", C - 60, 142, 120, 20, 17, AMB_INK, "RINGS", spacing=0.35, mode="ambient"))
+    rings_logo = (text("logo", C - 60, 140, 120, 20, 17, INK, "RINGS", spacing=0.35, mode="active")
+                  + text("logoAmb", C - 60, 140, 120, 20, 17, AMB_INK, "RINGS", spacing=0.35, mode="ambient"))
 
     def weather_text(color, mode, sfx):
         return condition(f"weather{sfx}", "[WEATHER.IS_AVAILABLE] && !([WEATHER.IS_ERROR])",
-                         text(f"weatherText{sfx}", C - 75, 256, 150, 22, 15, color,
+                         text(f"weatherText{sfx}", C - 75, 254, 150, 22, 16, color,
                               template("%d° %s", "[WEATHER.TEMPERATURE]", "[WEATHER.CONDITION_NAME]"),
                               family="SYNC_TO_DEVICE", mode=mode),
-                         text(f"weatherNone{sfx}", C - 75, 256, 150, 22, 15, color, "--°",
+                         text(f"weatherNone{sfx}", C - 75, 254, 150, 22, 16, color, "--°",
                               family="SYNC_TO_DEVICE", mode=mode))
 
     def date(color, mode, sfx):
         dow = choose(f"dateDow{sfx}", [(str(i), f"[DAY_OF_WEEK] == {i + 1}",
-                                        text(f"dateDow{sfx}{i}", C - 64, 277, 60, 15, 11, color, name,
+                                        text(f"dateDow{sfx}{i}", C - 66, 276, 62, 18, 14, color, name,
                                              align="END", spacing=0.12, mode=mode))
                                        for i, name in enumerate(DOW_NAMES)])
         month = choose(f"dateMon{sfx}", [(str(i), f"[MONTH] == {i + 1}",
-                                          text(f"dateMon{sfx}{i}", C + 4, 277, 60, 15, 11, color,
+                                          text(f"dateMon{sfx}{i}", C + 4, 276, 66, 18, 14, color,
                                                template(f"{name} %d", "[DAY]"), align="START", spacing=0.12,
                                                mode=mode))
                                          for i, name in enumerate(MONTHS)])
@@ -472,13 +466,13 @@ def centre():
 def next_event():
     event = template("%s %s", "[COMPLICATION.TITLE]", "[COMPLICATION.TEXT]")
     return ('<ComplicationSlot slotId="0" name="nextEvent" displayName="@string/next_event" '
-            'x="140" y="231" width="170" height="24" supportedTypes="LONG_TEXT" isCustomizable="TRUE">'
+            'x="137" y="229" width="176" height="26" supportedTypes="LONG_TEXT" isCustomizable="TRUE">'
             '<DefaultProviderPolicy defaultSystemProvider="NEXT_EVENT" defaultSystemProviderType="LONG_TEXT"/>'
-            '<BoundingBox x="0" y="0" width="170" height="24"/>'
+            '<BoundingBox x="0" y="0" width="176" height="26"/>'
             '<Complication type="LONG_TEXT">'
-            + text("eventLong", 0, 0, 170, 24, 14, NAVY, event, family="SYNC_TO_DEVICE", weight="BOLD",
+            + text("eventLong", 0, 0, 176, 26, 16, NAVY, event, family="SYNC_TO_DEVICE", weight="BOLD",
                    mode="active")
-            + text("eventLongAmb", 0, 0, 170, 24, 14, LUME, event, family="SYNC_TO_DEVICE", weight="BOLD",
+            + text("eventLongAmb", 0, 0, 176, 26, 16, LUME, event, family="SYNC_TO_DEVICE", weight="BOLD",
                    mode="ambient")
             + "</Complication></ComplicationSlot>")
 
@@ -611,11 +605,11 @@ def preview_png():
     ring(DAY_MARK[0], DAY_MARK[1], RED, turns["dow"], SEG + turns["dow"])
     ring(DAY_MARK[0], DAY_MARK[1], BLUE, 6 * SEG + turns["dow"], 7 * SEG + turns["dow"])
     for i in range(12):
-        label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 0.5, 11)
-        label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 3.3, 13)
-        label(ROMAN[i], i * 30 + 7 + turns["hour"], R["hour"] - 3.5, 11)
+        label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 1, 14)
+        label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 2.5, 17)
+        label(ROMAN[i], i * 30 + 8 + turns["hour"], R["hour"] - 2.5, 15)
     for i in range(7):
-        label(DOW_NAMES[i], (i + 0.5) * SEG - 14 + turns["dow"], R["dow"] - 0.5, 11)
+        label(DOW_NAMES[i], (i + 0.5) * SEG - 10 + turns["dow"], R["dow"] - 1.5, 14)
     d = ImageDraw.Draw(img)
     for key in ("hour", "week", "dow"):
         n = 12 if key == "hour" else 7
@@ -623,7 +617,7 @@ def preview_png():
             a = i * 360 / n + turns[key]
             p, q = point(a, R[key] + HW), point(a, R[key] - HW)
             d.line([(p[0] * s, p[1] * s), (q[0] * s, q[1] * s)], fill=rgba(INK), width=2)
-    for r in (205.5, 184.75, 160.25, 135.75, 111.5, CENTER_R):
+    for r in (R["sec"] + HW, 183.5, 159.5, 135.5, 111.5, CENTER_R):
         ring(r, 0.7, INK)
     cx, cy = MOON
     d.pieslice([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
@@ -637,8 +631,8 @@ def preview_png():
                               fill=rgba("FFD2C6AB"), width=3 * s)
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)
-    d.text((C * s, 152 * s), "RINGS", font=font(17), fill=rgba(INK), anchor="mm")
-    d.text((C * s, 286 * s), "THU  OCT 15", font=font(11), fill=rgba(MUTED), anchor="mm")
+    d.text((C * s, 150 * s), "RINGS", font=font(17), fill=rgba(INK), anchor="mm")
+    d.text((C * s, 285 * s), "THU  OCT 15", font=font(14), fill=rgba(MUTED), anchor="mm")
     x, y0, y1, w = C - 10.3, 16.0, 137.0, 20.6
     d.rounded_rectangle([x * s, y0 * s, (x + w) * s, y1 * s], radius=7, outline=rgba(GOLD), width=3)
     d.line([(C * s, (y0 + 3) * s), (C * s, (y1 - 3) * s)], fill=rgba(HAIR), width=1)

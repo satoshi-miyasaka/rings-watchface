@@ -51,12 +51,12 @@ python3 tools/generate_watchface.py
 `disque/` は同じデータを使う別のウォッチフェイスです。5本のリングがディスクになって回り、12時の窓の下が「今」です。窓から時計回りに、これからの時間・日が並びます。Rings と並べて入れられます(アプリIDが別)。
 
 - 秒・分・時・週の予定・曜日のディスク。秒は1秒を8段階で刻みます
-- 時のディスクに今から8時間分の1時間ごとの天気(マークと気温)、曜日のディスクに今日から7日分の日ごとの天気(マークと最高/最低気温)
+- 時のディスクに今から8時間分の1時間ごとの天気、曜日のディスクに今日から7日分の日ごとの天気(どちらもマークだけ。気温は文字が小さくなりすぎるので出しません)
 - 中央にムーンフェイズ、その上にスマホの電池のゲージ(連携アプリから)、次の予定、今の天気、日付
 - 予定・休み・終日予定の表示は Rings と同じ連携アプリのデータを使います
 - 常時表示では文字盤を黒にして、ディスクは輪郭と灰色の文字、予定と窓は夜光色にします。秒のディスクと天気予報は消します
 
-`tools/generate_disque.py` が XML と画像を生成します(祝日などは `generate_watchface.py` のものを使います)。数字のフォントは Cormorant Garamond(SIL Open Font License、`disque/FONT_LICENSE_OFL.txt`)です。
+`tools/generate_disque.py` が XML と画像を生成します(祝日などは `generate_watchface.py` のものを使います)。数字のフォントは Cormorant Garamond の太字(SIL Open Font License、`disque/FONT_LICENSE_OFL.txt`)です。
 
 ```sh
 python3 tools/generate_disque.py

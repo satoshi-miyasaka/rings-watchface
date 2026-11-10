@@ -11,7 +11,7 @@ so it only changes how they are drawn.
 
 Outputs:
     disque/src/main/res/raw/watchface.xml
-    disque/src/main/res/drawable-nodpi/wx_*.png, index_mark.png, preview.png
+    disque/src/main/res/drawable-nodpi/wx_*.png, preview.png
 
 Everything else is drawn with PartDraw and PartText, so the face needs only
 a few small images. The disc numerals use Cormorant Garamond (SIL OFL,
@@ -33,11 +33,11 @@ RES = ROOT / "disque" / "src" / "main" / "res"
 
 SIZE = 450
 C = SIZE / 2
-HW = 10.0  # half the width of a disc's band
+HW = 11.5  # half the width of a disc's band
 
 # Discs from the outside in, as in Rings: radius of the band's centre line.
-R = {"sec": 195.5, "min": 171.5, "hour": 147.5, "week": 123.5, "dow": 99.5}
-FLANGE_R = 221.0
+R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "week": 127.5, "dow": 101.0}
+FLANGE_R = 223.0
 CENTER_R = 89.5
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
 MOON_R = 32.0
@@ -97,6 +97,7 @@ HOURLY = 8  # hours of forecast on the hour disc, from the current hour
 DAILY = 7  # days of forecast on the weekday disc, from today
 
 DOW_NAMES = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+DOW_LETTERS = ("S", "M", "T", "W", "T", "F", "S")
 MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 ROMAN = ("XII", "I", "II", "III", "IIII", "V", "VI", "VII", "VIII", "IX", "X", "XI")
 
@@ -205,21 +206,25 @@ def lit(name, r, a0, a1, color, width, ambient=LUME, ambient_alpha=150):
 # ---------------------------------------------------------------- the dial
 
 # Where events sit on each disc: (radius, width).
-MIN_EVENT = (R["min"] + 7.5, 5.0)
-HOUR_EVENT = (R["hour"] + 7.5, 5.0)
-WEEK_EVENT = (R["week"], 18.5)
-DAY_MARK = (R["dow"] + 8.0, 4.0)  # weekends, holidays, days off, all-day events
+MIN_EVENT = (R["min"] + HW - 2.75, 5.5)
+HOUR_EVENT = (R["hour"] + HW - 2.75, 5.5)
+WEEK_EVENT = (R["week"], 2 * HW - 2)
+DAY_MARK = (R["dow"] + HW - 2.25, 4.5)  # weekends, holidays, days off, all-day events
+
+
+def dial_edges():
+    return [R["sec"] + HW] + [(R[a] - HW + R[b] + HW) / 2 for a, b in
+                              (("sec", "min"), ("min", "hour"), ("hour", "week"), ("week", "dow"))] + [CENTER_R]
 
 
 def dial():
-    edges = [R["sec"] + HW] + [(R[a] - HW + R[b] + HW) / 2 for a, b in
-                               (("sec", "min"), ("min", "hour"), ("hour", "week"), ("week", "dow"))] + [CENTER_R]
+    edges = dial_edges()
     face = (disc_fill(FLANGE_R, FLANGE)
             + "".join(circle(R[k], BANDS[k], 2 * HW) for k in R)
             + disc_fill(CENTER_R, OPAL))
     seps = "".join(circle(r, INK, 0.7) for r in edges)
     amb_seps = "".join(circle(r, AMB_LINE, 1.2) for r in edges)
-    flange = radial_ticks(FLANGE_R, FLANGE_R - 4.5, 120, INK, 0.6)
+    flange = radial_ticks(FLANGE_R, R["sec"] + HW + 0.5, 120, INK, 0.6)
     return (draw("face", face, mode="active")
             + draw("separators", seps, mode="active")
             + draw("flangeTicks", flange, mode="active")
@@ -232,17 +237,17 @@ def disc_print(ink, mode):
     if mode == "active":  # the seconds disc stays out of ambient
         r = R["sec"]
         body = draw("secTicks", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
-        body += "".join(on_disc(f"sec{i}", i * 30, r - 1, 30, 18, 14, ink, f"{i * 5:02d}") for i in range(12))
+        body += "".join(on_disc(f"sec{i}", i * 30, r - 0.5, 34, 21, 16, ink, f"{i * 5:02d}") for i in range(12))
         out.append(group("secDisc", body, turn=TURN["sec"], mode=mode))
 
     r = R["min"]
     body = draw(f"minTicks{mode}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
-    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 2.5, 36, 20, 17, ink, f"{i * 5:02d}") for i in range(12))
+    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 3, 40, 24, 20, ink, f"{i * 5:02d}") for i in range(12))
     out.append(group(f"minDisc{mode}", body, turn=TURN["min"], mode=mode))
 
     r = R["hour"]
     body = draw(f"hourTicks{mode}", radial_ticks(r + HW, r - HW, 12, ink, 0.9))
-    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 8, r - 2.5, 40, 19, 15, ink, ROMAN[i]) for i in range(12))
+    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 8.5, r - 3, 46, 22, 18, ink, ROMAN[i]) for i in range(12))
     out.append(group(f"hourDisc{mode}", body, turn=TURN["hour"], mode=mode))
 
     r = R["week"]
@@ -252,8 +257,7 @@ def disc_print(ink, mode):
 
     r = R["dow"]
     body = draw(f"dowTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
-    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 10, r - 1.5, 44, 18, 14, ink, DOW_NAMES[i],
-                            spacing=0.1) for i in range(7))
+    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 9, r - 2.5, 24, 21, 17, ink, DOW_LETTERS[i]) for i in range(7))
     out.append(group(f"dowDisc{mode}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
 
@@ -372,7 +376,7 @@ def companion_slots():
 
 # ---------------------------------------------------------------- weather
 
-ICON = 17  # icon size on the face
+ICON = 20  # icon size on the face
 
 
 def weather_icon(prefix, avail, cond, angle, r):
@@ -386,18 +390,18 @@ def weather_icon(prefix, avail, cond, angle, r):
 
 def forecasts():
     out = []
-    r = R["hour"] - 2.5
+    r = R["hour"] - 3
     for k in range(HOURLY):
         avail = f"[WEATHER.HOURS.{k}.IS_AVAILABLE]"
         # The hour starting k hours after this one, relative to the window.
         turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
-        body = weather_icon(f"wxH{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 22, r)
+        body = weather_icon(f"wxH{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 23, r)
         out.append(group(f"wxHour{k}", condition(f"wxH{k}On", avail, body), turn=turn, mode="active"))
-    r = R["dow"] - 1.5
+    r = R["dow"] - 2.5
     for d in range(DAILY):
         avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
         turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
-        body = weather_icon(f"wxD{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 11, r)
+        body = weather_icon(f"wxD{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 9, r)
         out.append(group(f"wxDay{d}", condition(f"wxD{d}On", avail, body), turn=turn, mode="active"))
     return "".join(out)
 
@@ -478,15 +482,14 @@ def next_event():
 
 
 def index_window():
-    x, y0, y1, w = C - 10.3, 16.0, 137.0, 20.6
+    x, y0, y1, w = C - 12, 3.0, 138.0, 24
     lens = (f'<RoundRectangle x="{x}" y="{y0}" width="{w}" height="{y1 - y0}" cornerRadiusX="3.5" '
             f'cornerRadiusY="3.5"><Fill color="#{LENS}"/><Stroke color="#{GOLD}" thickness="1.7"/></RoundRectangle>'
             + line(C, y0 + 3, C, y1 - 3, HAIR, 0.8))
     lens_amb = (f'<RoundRectangle x="{x}" y="{y0}" width="{w}" height="{y1 - y0}" cornerRadiusX="3.5" '
                 f'cornerRadiusY="3.5"><Stroke color="#{LUME}" thickness="1.7"/></RoundRectangle>'
                 + line(C, y0 + 3, C, y1 - 3, LUME, 0.8))
-    mark = f'<PartImage name="indexMark" x="{round(C - 7)}" y="2" width="14" height="12"><Image resource="index_mark"/></PartImage>'
-    return draw("lens", lens, mode="active") + draw("lensAmb", lens_amb, mode="ambient") + mark
+    return draw("lens", lens, mode="active") + draw("lensAmb", lens_amb, mode="ambient")
 
 
 def watchface_xml():
@@ -560,14 +563,6 @@ def icons():
             d.polygon([((6 + x) * s, (6 + y) * s) for x, y in pts], fill=rgba(colors["bolt"]))
         img.save(out / f"wx_{kind}.png", optimize=True)
 
-    # The applied triangle above the window.
-    img = Image.new("RGBA", (14 * SS, 12 * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.polygon([(0, 1 * SS), (14 * SS, 1 * SS), (7 * SS, 12 * SS)], fill=(110, 82, 30, 255))
-    d.polygon([(1 * SS, 1.6 * SS), (13 * SS, 1.6 * SS), (7 * SS, 11 * SS)], fill=(214, 176, 98, 255))
-    d.polygon([(4 * SS, 2.2 * SS), (8 * SS, 2.2 * SS), (6.4 * SS, 6.5 * SS)], fill=(247, 230, 173, 255))
-    img.resize((56, 48), Image.LANCZOS).save(out / "index_mark.png", optimize=True)
-
 
 def preview_png():
     """A still of the face at 10:08:32 on a Thursday, for the watch face picker."""
@@ -605,11 +600,11 @@ def preview_png():
     ring(DAY_MARK[0], DAY_MARK[1], RED, turns["dow"], SEG + turns["dow"])
     ring(DAY_MARK[0], DAY_MARK[1], BLUE, 6 * SEG + turns["dow"], 7 * SEG + turns["dow"])
     for i in range(12):
-        label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 1, 14)
-        label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 2.5, 17)
-        label(ROMAN[i], i * 30 + 8 + turns["hour"], R["hour"] - 2.5, 15)
+        label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 0.5, 16)
+        label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 3, 20)
+        label(ROMAN[i], i * 30 + 8.5 + turns["hour"], R["hour"] - 3, 18)
     for i in range(7):
-        label(DOW_NAMES[i], (i + 0.5) * SEG - 10 + turns["dow"], R["dow"] - 1.5, 14)
+        label(DOW_LETTERS[i], (i + 0.5) * SEG - 9 + turns["dow"], R["dow"] - 2.5, 17)
     d = ImageDraw.Draw(img)
     for key in ("hour", "week", "dow"):
         n = 12 if key == "hour" else 7
@@ -617,7 +612,7 @@ def preview_png():
             a = i * 360 / n + turns[key]
             p, q = point(a, R[key] + HW), point(a, R[key] - HW)
             d.line([(p[0] * s, p[1] * s), (q[0] * s, q[1] * s)], fill=rgba(INK), width=2)
-    for r in (R["sec"] + HW, 183.5, 159.5, 135.5, 111.5, CENTER_R):
+    for r in dial_edges():
         ring(r, 0.7, INK)
     cx, cy = MOON
     d.pieslice([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
@@ -633,11 +628,9 @@ def preview_png():
     d = ImageDraw.Draw(img)
     d.text((C * s, 150 * s), "RINGS", font=font(17), fill=rgba(INK), anchor="mm")
     d.text((C * s, 285 * s), "THU  OCT 15", font=font(14), fill=rgba(MUTED), anchor="mm")
-    x, y0, y1, w = C - 10.3, 16.0, 137.0, 20.6
+    x, y0, y1, w = C - 12, 3.0, 138.0, 24
     d.rounded_rectangle([x * s, y0 * s, (x + w) * s, y1 * s], radius=7, outline=rgba(GOLD), width=3)
     d.line([(C * s, (y0 + 3) * s), (C * s, (y1 - 3) * s)], fill=rgba(HAIR), width=1)
-    mark = Image.open(RES / "drawable-nodpi" / "index_mark.png").resize((28, 24), Image.LANCZOS)
-    img.alpha_composite(mark, (int((C - 7) * s), int(2 * s)))
     mask = Image.new("L", img.size, 0)
     ImageDraw.Draw(mask).ellipse([0, 0, k - 1, k - 1], fill=255)
     out = Image.new("RGB", img.size, (0, 0, 0))

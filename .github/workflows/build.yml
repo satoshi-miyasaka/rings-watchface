@@ -24,9 +24,11 @@ jobs:
           (cd documents && zip -qr /tmp/validator/docs.zip .)
           CP=$(ls validator/libs/*.jar | tr '\n' ':')
           javac -nowarn -d /tmp/validator -cp "$CP" $(find validator/src/main/java -name '*.java')
-          java -cp "/tmp/validator:$CP" com.samsung.watchface.DWFValidationApplication 2 \
-            "$GITHUB_WORKSPACE/app/src/main/res/raw/watchface.xml" 2>&1 | tee /tmp/validator.log
-          grep -q PASSED /tmp/validator.log
+          for face in app disque; do
+            java -cp "/tmp/validator:$CP" com.samsung.watchface.DWFValidationApplication 2 \
+              "$GITHUB_WORKSPACE/$face/src/main/res/raw/watchface.xml" 2>&1 | tee /tmp/validator.log
+            grep -q PASSED /tmp/validator.log
+          done
 
       - name: Build APKs and run unit tests
         run: ./gradlew assembleDebug testDebugUnitTest --no-daemon
@@ -35,6 +37,11 @@ jobs:
         with:
           name: rings-watchface-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rings-disque-debug
+          path: disque/build/outputs/apk/debug/*.apk
 
       - uses: actions/upload-artifact@v4
         with:

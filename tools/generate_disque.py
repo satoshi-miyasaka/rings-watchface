@@ -379,30 +379,33 @@ def companion_slots():
 ICON = 20  # icon size on the face
 
 
-def weather_icon(prefix, avail, cond, angle, r):
-    """The icon for a forecast, centred at radius r and the given angle from 12."""
+def weather_icon(prefix, avail, cond, angle, r, suffix=""):
+    """The icon for a forecast, centred at radius r and the given angle from 12.
+    suffix picks the image set: "" in colour, "_amb" in grey for ambient."""
     img = lambda kind: (f'<PartImage name="{prefix}{kind}" x="{round(C - ICON / 2)}" y="{round(C - r - ICON / 2)}" '
-                        f'width="{ICON}" height="{ICON}"><Image resource="wx_{kind}"/></PartImage>')
+                        f'width="{ICON}" height="{ICON}"><Image resource="wx_{kind}{suffix}"/></PartImage>')
     cases = [(kind, f"{avail} && (" + " || ".join(f"{cond} == {v}" for v in values) + ")", img(kind))
              for kind, values in WEATHER_ICONS]
     return group(f"{prefix}Icon", choose(prefix, cases), angle=angle)
 
 
 def forecasts():
+    """Icons in colour on the dial and in grey in ambient mode."""
     out = []
-    r = R["hour"] - 3
-    for k in range(HOURLY):
-        avail = f"[WEATHER.HOURS.{k}.IS_AVAILABLE]"
-        # The hour starting k hours after this one, relative to the window.
-        turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
-        body = weather_icon(f"wxH{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 23, r)
-        out.append(group(f"wxHour{k}", condition(f"wxH{k}On", avail, body), turn=turn, mode="active"))
-    r = R["dow"] - 2.5
-    for d in range(DAILY):
-        avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
-        turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
-        body = weather_icon(f"wxD{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 9, r)
-        out.append(group(f"wxDay{d}", condition(f"wxD{d}On", avail, body), turn=turn, mode="active"))
+    for mode, sfx, img in (("active", "", ""), ("ambient", "A", "_amb")):
+        r = R["hour"] - 3
+        for k in range(HOURLY):
+            avail = f"[WEATHER.HOURS.{k}.IS_AVAILABLE]"
+            # The hour starting k hours after this one, relative to the window.
+            turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
+            body = weather_icon(f"wxH{sfx}{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 23, r, img)
+            out.append(group(f"wxHour{sfx}{k}", condition(f"wxH{sfx}{k}On", avail, body), turn=turn, mode=mode))
+        r = R["dow"] - 2.5
+        for d in range(DAILY):
+            avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
+            turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
+            body = weather_icon(f"wxD{sfx}{d}", avail, f"[WEATHER.DAYS.{d}.CONDITION_DAY]", 9, r, img)
+            out.append(group(f"wxDay{sfx}{d}", condition(f"wxD{sfx}{d}On", avail, body), turn=turn, mode=mode))
     return "".join(out)
 
 
@@ -526,42 +529,45 @@ def icons():
     out = RES / "drawable-nodpi"
     k = 48
     s = k / 12  # one face pixel
-    colors = {"sun": "FFC08A1E", "cloud": "FF858891", "rain": "FF2F5D9E", "snow": "FF5F86B8", "bolt": "FF7A3FA0"}
+    sets = (
+        ("", {"sun": "FFC08A1E", "cloud": "FF858891", "rain": "FF2F5D9E", "snow": "FF5F86B8", "bolt": "FF7A3FA0"}),
+        ("_amb", {"sun": AMB_INK, "cloud": AMB_INK, "rain": AMB_INK, "snow": AMB_INK, "bolt": AMB_INK}),
+    )
+    for suffix, colors in sets:
+        def cloud(d, dy):
+            col = rgba(colors["cloud"])
+            for cx, cy, r in ((-2.4, 0.9, 2.3), (0.3, -0.6, 3.1), (2.8, 1.0, 2.2)):
+                d.ellipse([(6 + cx - r) * s, (6 + cy + dy - r) * s, (6 + cx + r) * s, (6 + cy + dy + r) * s], fill=col)
+            d.rectangle([(6 - 2.4) * s, (6 + 1 + dy) * s, (6 + 2.8) * s, (6 + 3.2 + dy) * s], fill=col)
 
-    def cloud(d, dy):
-        col = rgba(colors["cloud"])
-        for cx, cy, r in ((-2.4, 0.9, 2.3), (0.3, -0.6, 3.1), (2.8, 1.0, 2.2)):
-            d.ellipse([(6 + cx - r) * s, (6 + cy + dy - r) * s, (6 + cx + r) * s, (6 + cy + dy + r) * s], fill=col)
-        d.rectangle([(6 - 2.4) * s, (6 + 1 + dy) * s, (6 + 2.8) * s, (6 + 3.2 + dy) * s], fill=col)
-
-    for kind, _ in WEATHER_ICONS:
-        img = Image.new("RGBA", (k, k), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
-        if kind == "sun":
-            col = rgba(colors["sun"])
-            d.ellipse([(6 - 2.3) * s, (6 - 2.3) * s, (6 + 2.3) * s, (6 + 2.3) * s], fill=col)
-            for i in range(8):
-                a = i / 8 * 2 * math.pi
-                d.line([((6 + 3.5 * math.cos(a)) * s, (6 + 3.5 * math.sin(a)) * s),
-                        ((6 + 5 * math.cos(a)) * s, (6 + 5 * math.sin(a)) * s)], fill=col, width=int(0.9 * s))
-        elif kind == "cloud":
-            cloud(d, 0)
-        elif kind == "rain":
-            cloud(d, -1.6)
-            for dx in (-2, 0.4, 2.8):
-                d.line([((6 + dx) * s, 8.8 * s), ((6 + dx - 0.8) * s, 10.8 * s)], fill=rgba(colors["rain"]),
-                       width=int(1 * s))
-        elif kind == "snow":
-            for i in range(3):
-                a = i / 3 * math.pi + math.pi / 2
-                d.line([((6 + 4 * math.cos(a)) * s, (6 + 4 * math.sin(a)) * s),
-                        ((6 - 4 * math.cos(a)) * s, (6 - 4 * math.sin(a)) * s)], fill=rgba(colors["snow"]),
-                       width=int(0.9 * s))
-        else:
-            cloud(d, -1.8)
-            pts = [(0.8, 1.4), (-1.4, 4.2), (0, 4.2), (-0.8, 6.4), (1.9, 3.2), (0.4, 3.2)]
-            d.polygon([((6 + x) * s, (6 + y) * s) for x, y in pts], fill=rgba(colors["bolt"]))
-        img.save(out / f"wx_{kind}.png", optimize=True)
+        for kind, _ in WEATHER_ICONS:
+            img = Image.new("RGBA", (k, k), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            if kind == "sun":
+                col = rgba(colors["sun"])
+                d.ellipse([(6 - 2.3) * s, (6 - 2.3) * s, (6 + 2.3) * s, (6 + 2.3) * s], fill=col)
+                for i in range(8):
+                    a = i / 8 * 2 * math.pi
+                    d.line([((6 + 3.5 * math.cos(a)) * s, (6 + 3.5 * math.sin(a)) * s),
+                            ((6 + 5 * math.cos(a)) * s, (6 + 5 * math.sin(a)) * s)], fill=col, width=int(0.9 * s))
+            elif kind == "cloud":
+                cloud(d, 0)
+            elif kind == "rain":
+                cloud(d, -1.6)
+                for dx in (-2, 0.4, 2.8):
+                    d.line([((6 + dx) * s, 8.8 * s), ((6 + dx - 0.8) * s, 10.8 * s)], fill=rgba(colors["rain"]),
+                           width=int(1 * s))
+            elif kind == "snow":
+                for i in range(3):
+                    a = i / 3 * math.pi + math.pi / 2
+                    d.line([((6 + 4 * math.cos(a)) * s, (6 + 4 * math.sin(a)) * s),
+                            ((6 - 4 * math.cos(a)) * s, (6 - 4 * math.sin(a)) * s)], fill=rgba(colors["snow"]),
+                           width=int(0.9 * s))
+            else:
+                cloud(d, -1.8)
+                pts = [(0.8, 1.4), (-1.4, 4.2), (0, 4.2), (-0.8, 6.4), (1.9, 3.2), (0.4, 3.2)]
+                d.polygon([((6 + x) * s, (6 + y) * s) for x, y in pts], fill=rgba(colors["bolt"]))
+            img.save(out / f"wx_{kind}{suffix}.png", optimize=True)
 
 
 def preview_png():

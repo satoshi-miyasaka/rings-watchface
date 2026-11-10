@@ -15,6 +15,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "rings-watchface"
-// app: the watch face itself (Watch Face Format, no code).
+// app: the Rings watch face; disque: the Disque watch face (Watch Face Format, no code).
 // mobile + wear: the companion that feeds events and the timer to the watch face.
-include(":app", ":mobile", ":wear")
+include(":app", ":disque", ":mobile", ":wear")

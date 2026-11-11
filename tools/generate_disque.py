@@ -11,12 +11,17 @@ so it only changes how they are drawn.
 
 Outputs:
     disque/src/main/res/raw/watchface.xml
-    disque/src/main/res/drawable-nodpi/wx_*.png, preview.png
+    disque/src/main/res/drawable-nodpi/wx_*.png, min_mark*.png, preview.png
 
 Everything else is drawn with PartDraw and PartText, so the face needs only
 a few small images. The disc numerals use Cormorant Garamond (SIL OFL,
 disque/src/main/res/font/cormorant_bold.ttf, a Latin subset of the 700
-weight).
+weight). The disc lettering can also be set in Cormorant with lining
+figures, Cinzel or Jost (all SIL OFL, licences in disque/FONT_LICENSES/).
+
+Options in the watch face editor: the disc lettering font, how the seconds
+disc moves (one step a second, eight steps a second, or not at all), the
+size of the minute numerals, and marks at 00/15/30/45 on the minute disc.
 """
 
 import math
@@ -71,6 +76,28 @@ BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "week": BAND_B, "dow": BA
 FONT = "cormorant_bold"
 SEG = 360 / 7
 
+# Lettering on the discs, chosen in the editor: (id, font resource, height of
+# a digit and of a capital per pixel of font size). Classic keeps the sizes in
+# CLASSIC_SIZE because its old-style figures do not line up with the capitals;
+# the others are sized so their letters reach the heights in LETTER_HEIGHT.
+FONTS = (
+    ("classic", "cormorant_bold", None, None),
+    ("lining", "cormorant_lining", 0.66, 0.64),
+    ("cinzel", "cinzel_bold", 0.72, 0.70),
+    ("jost", "jost_semibold", 0.73, 0.70),
+)
+CLASSIC_SIZE = {"sec": 16, "min": 20, "minLarge": 24, "minQuarter": 26, "minSmall": 18, "hour": 18, "dow": 17}
+LETTER_HEIGHT = {"sec": 11, "min": 12.5, "minLarge": 14.5, "minQuarter": 15.5, "minSmall": 11, "hour": 12,
+                 "dow": 11.5}
+CAPITALS = ("hour", "dow")  # roles set in capitals; the rest are digits
+
+# Minute numerals, chosen in the editor: the size role of each numeral 0-11.
+MIN_SIZES = (
+    ("normal", ("min",) * 12),
+    ("large", ("minLarge",) * 12),
+    ("quarters", tuple("minQuarter" if i % 3 == 0 else "minSmall" for i in range(12))),
+)
+
 # How far each disc turns so that now sits under the window. The seconds
 # disc moves in eighths of a second, like a 28,800 vph movement.
 TURN = {
@@ -80,6 +107,14 @@ TURN = {
     "dow": "-(([DAY_OF_WEEK] - 1) + [HOUR_0_23_MINUTE] / 24) * 360 / 7",
 }
 TURN["week"] = TURN["dow"]
+
+# How the seconds disc moves, chosen in the editor. Eight steps a second looks
+# like a mechanical movement but makes the watch redraw continuously.
+SEC_MOTION = (
+    ("tick", "-[SECOND] * 6"),
+    ("beat", TURN["sec"]),
+    ("off", None),
+)
 
 FULL = f'x="0" y="0" width="{SIZE}" height="{SIZE}"'
 HIDE_IN_AMBIENT = '<Variant mode="AMBIENT" target="alpha" value="0"/>'
@@ -175,10 +210,26 @@ def template(fmt, *exprs):
     return "<Template>" + fmt + "".join(f'<Parameter expression="{e}"/>' for e in exprs) + "</Template>"
 
 
-def on_disc(name, angle, r, w, h, size, color, content, mode="both", spacing=None):
+def on_disc(name, angle, r, w, h, size, color, content, mode="both", spacing=None, family=FONT):
     """Text centred at radius r on the disc's angle, upright when it is at 12."""
     return group(name, text(f"{name}T", C - w / 2, C - r - h / 2, w, h, size, color, content,
-                            spacing=spacing), angle=angle, mode=mode)
+                            spacing=spacing, family=family), angle=angle, mode=mode)
+
+
+_measure = {}
+
+
+def lettering(font, role, content):
+    """(size, box width, box height) for content in a font and size role."""
+    _, res, digit, capital = font
+    if digit is None:
+        size = CLASSIC_SIZE[role]
+    else:
+        size = round(LETTER_HEIGHT[role] / (capital if role in CAPITALS else digit), 1)
+    if res not in _measure:
+        _measure[res] = ImageFont.truetype(str(RES / "font" / f"{res}.ttf"), 100)
+    width = _measure[res].getlength(content) * size / 100
+    return size, math.ceil(width * 1.2) + 6, math.ceil(size * 1.3)
 
 
 def condition(name, expr, body, default=""):
@@ -231,35 +282,104 @@ def dial():
             + draw("separatorsAmbient", amb_seps, mode="ambient"))
 
 
-def disc_print(ink, mode):
-    """The printing on the discs (numerals, labels, dividers), turned with them."""
+def hour_dividers(r, ink):
+    """Dividers between the hours, heavier at 3, 6 and 9 and heaviest at 12."""
     out = []
+    for i in range(12):
+        width = 3.2 if i == 0 else 2.0 if i % 3 == 0 else 0.9
+        x1, y1 = point(i * 30, r + HW)
+        x2, y2 = point(i * 30, r - HW)
+        out.append(line(x1, y1, x2, y2, ink, width))
+    return "".join(out)
+
+
+def disc_print(ink, mode, font):
+    """The printing on the discs (numerals, labels, dividers), turned with them."""
+    fid, res = font[0], font[1]
+    tag = f"{mode}{fid}"
+    out = []
+
+    def label(name, angle, r, role, content):
+        size, w, h = lettering(font, role, content)
+        return on_disc(name, angle, r, w, h, size, ink, content, family=res)
+
     if mode == "active":  # the seconds disc stays out of ambient
         r = R["sec"]
-        body = draw("secTicks", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
-        body += "".join(on_disc(f"sec{i}", i * 30, r - 0.5, 34, 21, 16, ink, f"{i * 5:02d}") for i in range(12))
-        out.append(group("secDisc", body, turn=TURN["sec"], mode=mode))
+        body = draw(f"secTicks{fid}", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
+        body += "".join(label(f"sec{fid}{i}", i * 30, r - 0.5, "sec", f"{i * 5:02d}") for i in range(12))
+        options = "".join(
+            f'<ListOption id="{opt}">'
+            + (group(f"secDisc{fid}{opt}", body, turn=turn) if turn else rings.empty())
+            + "</ListOption>" for opt, turn in SEC_MOTION)
+        out.append(group(f"secDisc{fid}", f'<ListConfiguration id="secMotion">{options}</ListConfiguration>',
+                         mode=mode))
 
     r = R["min"]
-    body = draw(f"minTicks{mode}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
-    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 3, 40, 24, 20, ink, f"{i * 5:02d}") for i in range(12))
-    out.append(group(f"minDisc{mode}", body, turn=TURN["min"], mode=mode))
+    sizes = "".join(
+        f'<ListOption id="{opt}">'
+        + group(f"minNum{tag}{opt}", "".join(label(f"min{tag}{opt}{i}", i * 30, r - 3, role, f"{i * 5:02d}")
+                                             for i, role in enumerate(roles)))
+        + "</ListOption>" for opt, roles in MIN_SIZES)
+    body = (draw(f"minTicks{tag}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
+            + f'<ListConfiguration id="minSize">{sizes}</ListConfiguration>')
+    out.append(group(f"minDisc{tag}", body, turn=TURN["min"], mode=mode))
 
     r = R["hour"]
-    body = draw(f"hourTicks{mode}", radial_ticks(r + HW, r - HW, 12, ink, 0.9))
-    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 8.5, r - 3, 46, 22, 18, ink, ROMAN[i]) for i in range(12))
-    out.append(group(f"hourDisc{mode}", body, turn=TURN["hour"], mode=mode))
+    body = draw(f"hourTicks{tag}", hour_dividers(r, ink))
+    body += "".join(label(f"hour{tag}{i}", i * 30 + 8.5, r - 3, "hour", ROMAN[i]) for i in range(12))
+    out.append(group(f"hourDisc{tag}", body, turn=TURN["hour"], mode=mode))
 
     r = R["week"]
-    body = draw(f"weekTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.8)
+    body = draw(f"weekTicks{tag}", radial_ticks(r + HW, r - HW, 7, ink, 0.8)
                 + radial_ticks(r - HW, r - HW + 2.8, 84, ink, 0.7, skip=12))
-    out.append(group(f"weekDisc{mode}", body, turn=TURN["week"], mode=mode))
+    out.append(group(f"weekDisc{tag}", body, turn=TURN["week"], mode=mode))
 
     r = R["dow"]
-    body = draw(f"dowTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
-    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 9, r - 2.5, 24, 21, 17, ink, DOW_LETTERS[i]) for i in range(7))
-    out.append(group(f"dowDisc{mode}", body, turn=TURN["dow"], mode=mode))
+    body = draw(f"dowTicks{tag}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
+    body += "".join(label(f"dow{tag}{i}", (i + 0.5) * SEG - 9, r - 2.5, "dow", DOW_LETTERS[i]) for i in range(7))
+    out.append(group(f"dowDisc{tag}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
+
+
+def disc_lettering():
+    """disc_print in each font, under the font option."""
+    options = "".join(
+        f'<ListOption id="{font[0]}">'
+        + group(f"lettering{font[0]}", disc_print(INK, "active", font) + disc_print(AMB_INK, "ambient", font))
+        + "</ListOption>" for font in FONTS)
+    return f'<ListConfiguration id="discFont">{options}</ListConfiguration>'
+
+
+def minute_marks():
+    """An inward triangle at 00 and short lines at 15, 30 and 45 on the minute
+    disc's outer edge, drawn over the events; switched in the editor."""
+    r = R["min"] + HW
+    lines = "".join(line(*point(a, r), *point(a, r - 5.5), INK, 1.8) for a in (90, 180, 270))
+    lines_amb = "".join(line(*point(a, r), *point(a, r - 5.5), LUME, 1.8) for a in (90, 180, 270))
+    tri = lambda name, res, alpha: (f'<PartImage name="{name}" x="{round(C - 5)}" y="{round(C - r)}" width="10" '
+                                    f'height="8"{alpha}><Image resource="{res}"/>'
+                                    + (SHOW_IN_AMBIENT if alpha else HIDE_IN_AMBIENT) + "</PartImage>")
+    body = (draw("minMarkLines", lines, mode="active") + draw("minMarkLinesAmb", lines_amb, mode="ambient")
+            + tri("minMarkTop", "min_mark", "") + tri("minMarkTopAmb", "min_mark_amb", ' alpha="0"'))
+    return ('<BooleanConfiguration id="minMarks">'
+            f'<BooleanOption id="TRUE">{group("minMarks", body, turn=TURN["min"])}</BooleanOption>'
+            f'<BooleanOption id="FALSE">{rings.empty()}</BooleanOption>'
+            "</BooleanConfiguration>")
+
+
+def user_configurations():
+    def options(ids, prefix):
+        return "".join(f'<ListOption id="{i}" displayName="@string/{prefix}_{i}"/>' for i in ids)
+
+    return ("<UserConfigurations>"
+            '<ListConfiguration id="discFont" displayName="@string/cfg_disc_font" defaultValue="classic">'
+            + options([f[0] for f in FONTS], "font") + "</ListConfiguration>"
+            '<ListConfiguration id="minSize" displayName="@string/cfg_min_size" defaultValue="normal">'
+            + options([m[0] for m in MIN_SIZES], "min_size") + "</ListConfiguration>"
+            '<BooleanConfiguration id="minMarks" displayName="@string/cfg_min_marks" defaultValue="FALSE"/>'
+            '<ListConfiguration id="secMotion" displayName="@string/cfg_sec_motion" defaultValue="tick">'
+            + options([m[0] for m in SEC_MOTION], "sec_motion") + "</ListConfiguration>"
+            "</UserConfigurations>")
 
 
 def day_marks():
@@ -437,8 +557,12 @@ def gauge_static():
              f'<Stroke color="#FFD2C6AB" thickness="3" cap="BUTT"/></Arc>')
     ticks = "".join(
         line(*point(-70 + 14 * i, 45, cx, cy), *point(-70 + 14 * i, 45 - (2.8 if i % 5 == 0 else 1.7), cx, cy),
-             INK, 0.7) for i in range(11))
-    return draw("gauge", track + ticks, mode="active")
+             INK, 0.7) for i in range(1, 10))
+    # Empty and full stand out on the dial and stay lit in ambient mode.
+    ends = lambda color: "".join(line(*point(a, 49.5, cx, cy), *point(a, 41, cx, cy), color, 2.2, "ROUND")
+                                 for a in (-70, 70))
+    return (draw("gauge", track + ticks + ends(GOLD), mode="active")
+            + draw("gaugeEndsAmb", ends(LUME), mode="ambient"))
 
 
 def centre():
@@ -501,12 +625,13 @@ def watchface_xml():
 <WatchFace width="{SIZE}" height="{SIZE}" clipShape="CIRCLE">
   <Metadata key="CLOCK_TYPE" value="ANALOG"/>
   <Metadata key="PREVIEW_TIME" value="10:08:32"/>
+  {user_configurations()}
   <Scene backgroundColor="#FF000000">
     {dial()}
-    {disc_print(INK, "active")}
-    {disc_print(AMB_INK, "ambient")}
+    {disc_lettering()}
     {day_marks()}
     {companion_slots()}
+    {minute_marks()}
     {forecasts()}
     {centre()}
     {next_event()}
@@ -568,6 +693,14 @@ def icons():
                 pts = [(0.8, 1.4), (-1.4, 4.2), (0, 4.2), (-0.8, 6.4), (1.9, 3.2), (0.4, 3.2)]
                 d.polygon([((6 + x) * s, (6 + y) * s) for x, y in pts], fill=rgba(colors["bolt"]))
             img.save(out / f"wx_{kind}{suffix}.png", optimize=True)
+
+
+def minute_mark_images():
+    """The inward triangle at 00 on the minute disc, in ink and in lume."""
+    for name, color in (("min_mark", INK), ("min_mark_amb", LUME)):
+        img = Image.new("RGBA", (10 * SS, 8 * SS), (0, 0, 0, 0))
+        ImageDraw.Draw(img).polygon([(0, 0), (10 * SS, 0), (5 * SS, 8 * SS)], fill=rgba(color))
+        img.resize((40, 32), Image.LANCZOS).save(RES / "drawable-nodpi" / f"{name}.png", optimize=True)
 
 
 def preview_png():
@@ -649,6 +782,7 @@ def main():
         (RES / sub).mkdir(parents=True, exist_ok=True)
     (RES / "raw" / "watchface.xml").write_text(watchface_xml(), encoding="utf-8")
     icons()
+    minute_mark_images()
     preview_png()
 
 

@@ -6,4 +6,18 @@
     <string name="ring_week_a">週の予定 日〜水 (Rings アプリ)</string>
     <string name="ring_week_b">週の予定 木〜土 (Rings アプリ)</string>
     <string name="ring_minute">分のディスク 24〜59分 (Rings アプリ)</string>
+    <string name="cfg_disc_font">ディスクの書体</string>
+    <string name="font_classic">Cormorant(低い数字)</string>
+    <string name="font_lining">Cormorant(高い数字)</string>
+    <string name="font_cinzel">Cinzel</string>
+    <string name="font_jost">Jost</string>
+    <string name="cfg_min_size">分の数字</string>
+    <string name="min_size_normal">標準</string>
+    <string name="min_size_large">すべて大きく</string>
+    <string name="min_size_quarters">00・15・30・45を大きく</string>
+    <string name="cfg_min_marks">分の印(00・15・30・45)</string>
+    <string name="cfg_sec_motion">秒の動き</string>
+    <string name="sec_motion_tick">1秒ごと</string>
+    <string name="sec_motion_beat">1秒に8回(電池多め)</string>
+    <string name="sec_motion_off">止める(秒なし)</string>
 </resources>

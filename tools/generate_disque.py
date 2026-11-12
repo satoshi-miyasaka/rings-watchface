@@ -46,7 +46,11 @@ R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "week": 127.5, "dow": 101.0}
 FLANGE_R = 223.0
 CENTER_R = 89.5
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
-MOON_R = 32.0
+MOON_R = 40.0  # radius of the moon aperture
+MOON_SIZE = 12.8  # radius of each moon
+MOON_ORBIT = 24.8  # distance of the moons from the disc's centre
+HUMP_R = 14.4  # the humps sit on the horizon under the moons at new moon
+GAUGE_R = 50.0  # centre line of the battery gauge around the aperture
 
 # Colours (ARGB)
 INK = "FF2A2622"
@@ -477,18 +481,20 @@ def gauge_parts(battery, valid):
     cx, cy = MOON
     angle = f"-70 + ({battery}) * 1.4"
     fill = (f'<PartDraw name="gaugeFill" {FULL}>{HIDE_IN_AMBIENT}'
-            f'<Arc centerX="{cx}" centerY="{cy}" width="93" height="93" startAngle="-70" endAngle="-70">'
+            f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * GAUGE_R}" height="{2 * GAUGE_R}" startAngle="-70" endAngle="-70">'
             f'<Stroke color="#{GOLD}" thickness="3" cap="BUTT"/>'
             f'<Transform target="endAngle" value="{angle}"/></Arc></PartDraw>')
     box = f'x="{round(cx - 60)}" y="{round(cy - 60)}" width="120" height="120"'
-    marker = group("gaugeMarker", draw("gaugeMarkerLine", line(60, 60 - 35.5, 60, 60 - 41, NAVY, 2.6, "ROUND"))
+    marker = group("gaugeMarker", draw("gaugeMarkerLine", line(60, 60 - GAUGE_R + 7.5, 60, 60 - GAUGE_R + 3, NAVY, 2.6, "ROUND"))
                    + f'<PartDraw name="gaugeMarkerAmb" x="0" y="0" width="120" height="120" alpha="0">'
-                   f"{SHOW_IN_AMBIENT}{line(60, 60 - 35.5, 60, 60 - 41, LUME, 2.6, 'ROUND')}</PartDraw>",
+                   f"{SHOW_IN_AMBIENT}{line(60, 60 - GAUGE_R + 7.5, 60, 60 - GAUGE_R + 3, LUME, 2.6, 'ROUND')}</PartDraw>",
                    turn=angle, box=box)
-    label = (text("gaugeLabel", cx - 50, 156, 100, 16, 12, MUTED, template("phone %d", battery),
-                  spacing=0.08, mode="active")
-             + text("gaugeLabelAmb", cx - 50, 156, 100, 16, 12, AMB_INK, template("phone %d", battery),
-                    spacing=0.08, mode="ambient"))
+    # The reading sits beside the full end of the gauge.
+    x, y = point(70, GAUGE_R + 2, cx, cy)
+    label = (text("gaugeLabel", x + 4, y - 9, 30, 16, 12, MUTED, template("%d", battery), align="START",
+                  mode="active")
+             + text("gaugeLabelAmb", x + 4, y - 9, 30, 16, 12, AMB_INK, template("%d", battery), align="START",
+                    mode="ambient"))
     return condition("phoneValid", valid, fill + marker + label)
 
 
@@ -569,16 +575,18 @@ def moon():
     """Moon phase: a night-blue disc with two moons turning half a turn per
     lunation, seen through a window with two humps, as on a mechanical watch."""
     cx, cy = MOON
-    box = f'x="{round(cx - 40)}" y="{round(cy - 40)}" width="80" height="80"'
-    moons = draw("moons", disc_fill(11.25, MOON_GOLD, 24, 40) + disc_fill(11.25, MOON_GOLD, 56, 40)
-                 + disc_fill(0.9, MOON_GOLD, 40, 20) + disc_fill(0.7, MOON_GOLD, 50, 28)
-                 + disc_fill(0.9, MOON_GOLD, 30, 54) + disc_fill(0.7, MOON_GOLD, 46, 60),
-                 box='x="0" y="0" width="80" height="80"')
-    cover = (f'<Rectangle x="{cx - 40}" y="{cy}" width="80" height="40"><Fill color="#{OPAL}"/></Rectangle>'
-             + disc_fill(16, OPAL, cx - 16, cy) + disc_fill(16, OPAL, cx + 16, cy))
+    half = 42  # half the size of the turning disc's box
+    box = f'x="{round(cx - half)}" y="{round(cy - half)}" width="{2 * half}" height="{2 * half}"'
+    moons = draw("moons", disc_fill(MOON_SIZE, MOON_GOLD, half - MOON_ORBIT, half)
+                 + disc_fill(MOON_SIZE, MOON_GOLD, half + MOON_ORBIT, half),
+                 box=f'x="0" y="0" width="{2 * half}" height="{2 * half}"')
+    # Below the horizon, and the humps that hide the moons around new moon.
+    cover = (f'<Rectangle x="{cx - MOON_R - 4}" y="{cy}" width="{2 * MOON_R + 8}" height="{MOON_R}">'
+             f'<Fill color="#{OPAL}"/></Rectangle>'
+             + disc_fill(HUMP_R, OPAL, cx - MOON_ORBIT, cy) + disc_fill(HUMP_R, OPAL, cx + MOON_ORBIT, cy))
     frame = (f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * MOON_R}" height="{2 * MOON_R}" '
              f'startAngle="-90" endAngle="90"><Stroke color="#{GOLD}" thickness="1.5" cap="BUTT"/></Arc>'
-             + line(cx - 38, cy, cx + 38, cy, GOLD, 1.1))
+             + line(cx - MOON_R - 6, cy, cx + MOON_R + 6, cy, GOLD, 1.1))
     # The full moon is at the top when MOON_PHASE_POSITION is half way through its 0-27 cycle.
     return group("moon", draw("night", disc_fill(MOON_R + 2, NIGHT))
                  + group("moonDisc", moons, turn="[MOON_PHASE_POSITION] / 28 * 180", box=box)
@@ -587,13 +595,14 @@ def moon():
 
 def gauge_static():
     cx, cy = MOON
-    track = (f'<Arc centerX="{cx}" centerY="{cy}" width="93" height="93" startAngle="-70" endAngle="70">'
+    track = (f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * GAUGE_R}" height="{2 * GAUGE_R}" startAngle="-70" endAngle="70">'
              f'<Stroke color="#FFD2C6AB" thickness="3" cap="BUTT"/></Arc>')
     ticks = "".join(
-        line(*point(-70 + 14 * i, 45, cx, cy), *point(-70 + 14 * i, 45 - (2.8 if i % 5 == 0 else 1.7), cx, cy),
+        line(*point(-70 + 14 * i, GAUGE_R - 1.5, cx, cy),
+             *point(-70 + 14 * i, GAUGE_R - 1.5 - (2.8 if i % 5 == 0 else 1.7), cx, cy),
              INK, 0.7) for i in range(1, 10))
     # Empty and full stand out on the dial and stay lit in ambient mode.
-    ends = lambda color: "".join(line(*point(a, 49.5, cx, cy), *point(a, 41, cx, cy), color, 2.2, "ROUND")
+    ends = lambda color: "".join(line(*point(a, GAUGE_R + 3, cx, cy), *point(a, GAUGE_R - 5.5, cx, cy), color, 2.2, "ROUND")
                                  for a in (-70, 70))
     return (draw("gauge", track + ticks + ends(GOLD), mode="active")
             + draw("gaugeEndsAmb", ends(LUME), mode="ambient"))
@@ -790,12 +799,17 @@ def preview_png():
     cx, cy = MOON
     d.pieslice([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
                fill=rgba(NIGHT))
-    d.ellipse([(cx - 11.25) * s, (cy - 16 - 11.25) * s, (cx + 11.25) * s, (cy - 16 + 11.25) * s], fill=rgba(MOON_GOLD))
-    for hx in (cx - 16, cx + 16):
-        d.ellipse([(hx - 16) * s, (cy - 16) * s, (hx + 16) * s, (cy + 16) * s], fill=rgba(OPAL))
-    d.rectangle([(cx - 40) * s, cy * s, (cx + 40) * s, (cy + 34) * s], fill=rgba(OPAL))
+    m = MOON_ORBIT
+    d.ellipse([(cx - MOON_SIZE) * s, (cy - m - MOON_SIZE) * s, (cx + MOON_SIZE) * s, (cy - m + MOON_SIZE) * s],
+              fill=rgba(MOON_GOLD))
+    for hx in (cx - m, cx + m):
+        d.ellipse([(hx - HUMP_R) * s, (cy - HUMP_R) * s, (hx + HUMP_R) * s, (cy + HUMP_R) * s], fill=rgba(OPAL))
+    d.rectangle([(cx - MOON_R - 4) * s, cy * s, (cx + MOON_R + 4) * s, (cy + MOON_R) * s], fill=rgba(OPAL))
+    d.arc([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
+          fill=rgba(GOLD), width=3)
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    ImageDraw.Draw(layer).arc([(cx - 46.5) * s, (cy - 46.5) * s, (cx + 46.5) * s, (cy + 46.5) * s], -160, -20,
+    g = GAUGE_R
+    ImageDraw.Draw(layer).arc([(cx - g) * s, (cy - g) * s, (cx + g) * s, (cy + g) * s], -160, -20,
                               fill=rgba("FFD2C6AB"), width=3 * s)
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)

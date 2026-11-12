@@ -11,12 +11,18 @@ so it only changes how they are drawn.
 
 Outputs:
     disque/src/main/res/raw/watchface.xml
-    disque/src/main/res/drawable-nodpi/wx_*.png, preview.png
+    disque/src/main/res/drawable-nodpi/wx_*.png, mark_*.png, preview.png
 
 Everything else is drawn with PartDraw and PartText, so the face needs only
 a few small images. The disc numerals use Cormorant Garamond (SIL OFL,
 disque/src/main/res/font/cormorant_bold.ttf, a Latin subset of the 700
-weight).
+weight). The disc lettering can also be set in Cormorant with lining
+figures, Cinzel or Jost (all SIL OFL, licences in disque/FONT_LICENSES/).
+
+Options in the watch face editor: the disc lettering font, how the seconds
+disc moves (one step a second, eight steps a second, or not at all), the
+size of the hour and minute numerals (one setting for both), the colour of
+12/3/6/9 o'clock and 00/15/30/45 minutes, and marks at those quarters.
 """
 
 import math
@@ -40,7 +46,11 @@ R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "week": 127.5, "dow": 101.0}
 FLANGE_R = 223.0
 CENTER_R = 89.5
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
-MOON_R = 32.0
+MOON_R = 40.0  # radius of the moon aperture
+MOON_SIZE = 12.8  # radius of each moon
+MOON_ORBIT = 24.8  # distance of the moons from the disc's centre
+HUMP_R = 14.4  # the humps sit on the horizon under the moons at new moon
+GAUGE_R = 50.0  # centre line of the battery gauge around the aperture
 
 # Colours (ARGB)
 INK = "FF2A2622"
@@ -71,6 +81,49 @@ BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "week": BAND_B, "dow": BA
 FONT = "cormorant_bold"
 SEG = 360 / 7
 
+# Lettering on the discs, chosen in the editor: (id, font resource, height of
+# a digit and of a capital per pixel of font size). Classic keeps the sizes in
+# CLASSIC_SIZE because its old-style figures do not line up with the capitals;
+# the others are sized so their letters reach the heights in LETTER_HEIGHT.
+FONTS = (
+    ("classic", "cormorant_bold", None, None),
+    ("lining", "cormorant_lining", 0.66, 0.64),
+    ("cinzel", "cinzel_bold", 0.72, 0.70),
+    ("jost", "jost_semibold", 0.73, 0.70),
+)
+CLASSIC_SIZE = {"sec": 16, "min": 20, "minLarge": 24, "minQuarter": 26, "minSmall": 18,
+                "hour": 18, "hourLarge": 21, "hourQuarter": 23, "hourSmall": 16, "dow": 17}
+LETTER_HEIGHT = {"sec": 11, "min": 12.5, "minLarge": 14.5, "minQuarter": 15.5, "minSmall": 11,
+                 "hour": 12, "hourLarge": 14, "hourQuarter": 15, "hourSmall": 10.5, "dow": 11.5}
+
+
+def capitals(role):
+    """Roman hours and weekday letters are capitals; the rest are digits."""
+    return role.startswith("hour") or role == "dow"
+
+
+# Size of the hour and minute numerals, one setting for both discs on purpose.
+NUM_SIZES = ("normal", "large", "quarters")
+
+
+def size_role(opt, disc, i):
+    """The size role of numeral i (0-11) on the hour or minute disc."""
+    if opt == "large":
+        return disc + "Large"
+    if opt == "quarters":
+        return disc + ("Quarter" if i % 3 == 0 else "Small")
+    return disc
+
+
+# Colour of 12/3/6/9 o'clock and 00/15/30/45 minutes, and of the marks there:
+# (id, on the dial, in ambient). "white" keeps the ink on the light dial and
+# turns white in ambient mode, where the rest of the lettering is grey.
+QUARTER_COLORS = (
+    ("white", INK, "FFFFFFFF"),
+    ("red", RED, "FFEC6E63"),
+    ("blue", BLUE, "FF86AAF2"),
+)
+
 # How far each disc turns so that now sits under the window. The seconds
 # disc moves in eighths of a second, like a 28,800 vph movement.
 TURN = {
@@ -80,6 +133,14 @@ TURN = {
     "dow": "-(([DAY_OF_WEEK] - 1) + [HOUR_0_23_MINUTE] / 24) * 360 / 7",
 }
 TURN["week"] = TURN["dow"]
+
+# How the seconds disc moves, chosen in the editor. Eight steps a second looks
+# like a mechanical movement but makes the watch redraw continuously.
+SEC_MOTION = (
+    ("tick", "-[SECOND] * 6"),
+    ("beat", TURN["sec"]),
+    ("off", None),
+)
 
 FULL = f'x="0" y="0" width="{SIZE}" height="{SIZE}"'
 HIDE_IN_AMBIENT = '<Variant mode="AMBIENT" target="alpha" value="0"/>'
@@ -175,10 +236,26 @@ def template(fmt, *exprs):
     return "<Template>" + fmt + "".join(f'<Parameter expression="{e}"/>' for e in exprs) + "</Template>"
 
 
-def on_disc(name, angle, r, w, h, size, color, content, mode="both", spacing=None):
+def on_disc(name, angle, r, w, h, size, color, content, mode="both", spacing=None, family=FONT):
     """Text centred at radius r on the disc's angle, upright when it is at 12."""
     return group(name, text(f"{name}T", C - w / 2, C - r - h / 2, w, h, size, color, content,
-                            spacing=spacing), angle=angle, mode=mode)
+                            spacing=spacing, family=family), angle=angle, mode=mode)
+
+
+_measure = {}
+
+
+def lettering(font, role, content):
+    """(size, box width, box height) for content in a font and size role."""
+    _, res, digit, capital = font
+    if digit is None:
+        size = CLASSIC_SIZE[role]
+    else:
+        size = round(LETTER_HEIGHT[role] / (capital if capitals(role) else digit), 1)
+    if res not in _measure:
+        _measure[res] = ImageFont.truetype(str(RES / "font" / f"{res}.ttf"), 100)
+    width = _measure[res].getlength(content) * size / 100
+    return size, math.ceil(width * 1.2) + 6, math.ceil(size * 1.3)
 
 
 def condition(name, expr, body, default=""):
@@ -231,35 +308,116 @@ def dial():
             + draw("separatorsAmbient", amb_seps, mode="ambient"))
 
 
-def disc_print(ink, mode):
+def disc_print(ink, mode, font):
     """The printing on the discs (numerals, labels, dividers), turned with them."""
+    fid, res = font[0], font[1]
+    tag = f"{mode}{fid}"
     out = []
+
+    def label(name, angle, r, role, content, color=ink):
+        size, w, h = lettering(font, role, content)
+        return on_disc(name, angle, r, w, h, size, color, content, family=res)
+
+    def numerals(disc, texts):
+        """The 12 numerals of the hour or minute disc under the shared size
+        option, with 12/3/6/9 (00/15/30/45) under the colour option."""
+        r = R[disc] - 3
+        sizes = []
+        for opt in NUM_SIZES:
+            name = f"{disc}{tag}{opt}"
+            plain = "".join(label(f"{name}{i}", i * 30, r, size_role(opt, disc, i), t)
+                            for i, t in enumerate(texts) if i % 3)
+            colors = "".join(
+                f'<ListOption id="{cid}">'
+                + group(f"{name}{cid}", "".join(
+                    label(f"{name}{cid}{i}", i * 30, r, size_role(opt, disc, i), texts[i],
+                          dial if mode == "active" else amb) for i in range(0, 12, 3)))
+                + "</ListOption>" for cid, dial, amb in QUARTER_COLORS)
+            sizes.append(f'<ListOption id="{opt}">'
+                         + group(name, plain + f'<ListConfiguration id="quarterColor">{colors}</ListConfiguration>')
+                         + "</ListOption>")
+        return f'<ListConfiguration id="numSize">{"".join(sizes)}</ListConfiguration>'
+
     if mode == "active":  # the seconds disc stays out of ambient
         r = R["sec"]
-        body = draw("secTicks", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
-        body += "".join(on_disc(f"sec{i}", i * 30, r - 0.5, 34, 21, 16, ink, f"{i * 5:02d}") for i in range(12))
-        out.append(group("secDisc", body, turn=TURN["sec"], mode=mode))
+        body = draw(f"secTicks{fid}", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
+        body += "".join(label(f"sec{fid}{i}", i * 30, r - 0.5, "sec", f"{i * 5:02d}") for i in range(12))
+        options = "".join(
+            f'<ListOption id="{opt}">'
+            + (group(f"secDisc{fid}{opt}", body, turn=turn) if turn else rings.empty())
+            + "</ListOption>" for opt, turn in SEC_MOTION)
+        out.append(group(f"secDisc{fid}", f'<ListConfiguration id="secMotion">{options}</ListConfiguration>',
+                         mode=mode))
 
     r = R["min"]
-    body = draw(f"minTicks{mode}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
-    body += "".join(on_disc(f"min{mode}{i}", i * 30, r - 3, 40, 24, 20, ink, f"{i * 5:02d}") for i in range(12))
-    out.append(group(f"minDisc{mode}", body, turn=TURN["min"], mode=mode))
+    body = (draw(f"minTicks{tag}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
+            + numerals("min", [f"{i * 5:02d}" for i in range(12)]))
+    out.append(group(f"minDisc{tag}", body, turn=TURN["min"], mode=mode))
 
-    r = R["hour"]
-    body = draw(f"hourTicks{mode}", radial_ticks(r + HW, r - HW, 12, ink, 0.9))
-    body += "".join(on_disc(f"hour{mode}{i}", i * 30 + 8.5, r - 3, 46, 22, 18, ink, ROMAN[i]) for i in range(12))
-    out.append(group(f"hourDisc{mode}", body, turn=TURN["hour"], mode=mode))
+    # The hours sit where the dividers used to be: each numeral marks the start of its hour.
+    out.append(group(f"hourDisc{tag}", numerals("hour", ROMAN), turn=TURN["hour"], mode=mode))
 
     r = R["week"]
-    body = draw(f"weekTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.8)
+    body = draw(f"weekTicks{tag}", radial_ticks(r + HW, r - HW, 7, ink, 0.8)
                 + radial_ticks(r - HW, r - HW + 2.8, 84, ink, 0.7, skip=12))
-    out.append(group(f"weekDisc{mode}", body, turn=TURN["week"], mode=mode))
+    out.append(group(f"weekDisc{tag}", body, turn=TURN["week"], mode=mode))
 
     r = R["dow"]
-    body = draw(f"dowTicks{mode}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
-    body += "".join(on_disc(f"dow{mode}{i}", (i + 0.5) * SEG - 9, r - 2.5, 24, 21, 17, ink, DOW_LETTERS[i]) for i in range(7))
-    out.append(group(f"dowDisc{mode}", body, turn=TURN["dow"], mode=mode))
+    body = draw(f"dowTicks{tag}", radial_ticks(r + HW, r - HW, 7, ink, 0.9))
+    body += "".join(label(f"dow{tag}{i}", (i + 0.5) * SEG - 9, r - 2.5, "dow", DOW_LETTERS[i]) for i in range(7))
+    out.append(group(f"dowDisc{tag}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
+
+
+def disc_lettering():
+    """disc_print in each font, under the font option."""
+    options = "".join(
+        f'<ListOption id="{font[0]}">'
+        + group(f"lettering{font[0]}", disc_print(INK, "active", font) + disc_print(AMB_INK, "ambient", font))
+        + "</ListOption>" for font in FONTS)
+    return f'<ListConfiguration id="discFont">{options}</ListConfiguration>'
+
+
+def quarter_marks():
+    """An inward triangle at 12 o'clock and 00 minutes and short lines at the
+    other quarters, on the outer edge of the hour and minute discs over the
+    events, in the quarter colour; switched in the editor."""
+    def marks(disc, cid, dial, amb):
+        r = R[disc] + HW
+        lines = lambda color: "".join(line(*point(a, r), *point(a, r - 5.5), color, 1.8) for a in (90, 180, 270))
+        tri = lambda name, res, alpha: (f'<PartImage name="{name}" x="{round(C - 5)}" y="{round(C - r)}" '
+                                        f'width="10" height="8"{alpha}><Image resource="{res}"/>'
+                                        + (SHOW_IN_AMBIENT if alpha else HIDE_IN_AMBIENT) + "</PartImage>")
+        name = f"{disc}Marks{cid}"
+        body = (draw(f"{name}Lines", lines(dial), mode="active") + draw(f"{name}LinesAmb", lines(amb), mode="ambient")
+                + tri(f"{name}Top", f"mark_{cid}", "") + tri(f"{name}TopAmb", f"mark_{cid}_amb", ' alpha="0"'))
+        return group(name, body, turn=TURN[disc])
+
+    colors = "".join(f'<ListOption id="{cid}">'
+                     + group(f"marks{cid}", marks("hour", cid, dial, amb) + marks("min", cid, dial, amb))
+                     + "</ListOption>" for cid, dial, amb in QUARTER_COLORS)
+    return ('<BooleanConfiguration id="quarterMarks">'
+            f'<BooleanOption id="TRUE">{group("marks", f"<ListConfiguration id=\"quarterColor\">{colors}</ListConfiguration>")}'
+            "</BooleanOption>"
+            f'<BooleanOption id="FALSE">{rings.empty()}</BooleanOption>'
+            "</BooleanConfiguration>")
+
+
+def user_configurations():
+    def options(ids, prefix):
+        return "".join(f'<ListOption id="{i}" displayName="@string/{prefix}_{i}"/>' for i in ids)
+
+    return ("<UserConfigurations>"
+            '<ListConfiguration id="discFont" displayName="@string/cfg_disc_font" defaultValue="classic">'
+            + options([f[0] for f in FONTS], "font") + "</ListConfiguration>"
+            '<ListConfiguration id="numSize" displayName="@string/cfg_num_size" defaultValue="normal">'
+            + options(NUM_SIZES, "num_size") + "</ListConfiguration>"
+            '<ListConfiguration id="quarterColor" displayName="@string/cfg_quarter_color" defaultValue="white">'
+            + options([q[0] for q in QUARTER_COLORS], "quarter_color") + "</ListConfiguration>"
+            '<BooleanConfiguration id="quarterMarks" displayName="@string/cfg_quarter_marks" defaultValue="FALSE"/>'
+            '<ListConfiguration id="secMotion" displayName="@string/cfg_sec_motion" defaultValue="tick">'
+            + options([m[0] for m in SEC_MOTION], "sec_motion") + "</ListConfiguration>"
+            "</UserConfigurations>")
 
 
 def day_marks():
@@ -323,18 +481,20 @@ def gauge_parts(battery, valid):
     cx, cy = MOON
     angle = f"-70 + ({battery}) * 1.4"
     fill = (f'<PartDraw name="gaugeFill" {FULL}>{HIDE_IN_AMBIENT}'
-            f'<Arc centerX="{cx}" centerY="{cy}" width="93" height="93" startAngle="-70" endAngle="-70">'
+            f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * GAUGE_R}" height="{2 * GAUGE_R}" startAngle="-70" endAngle="-70">'
             f'<Stroke color="#{GOLD}" thickness="3" cap="BUTT"/>'
             f'<Transform target="endAngle" value="{angle}"/></Arc></PartDraw>')
     box = f'x="{round(cx - 60)}" y="{round(cy - 60)}" width="120" height="120"'
-    marker = group("gaugeMarker", draw("gaugeMarkerLine", line(60, 60 - 35.5, 60, 60 - 41, NAVY, 2.6, "ROUND"))
+    marker = group("gaugeMarker", draw("gaugeMarkerLine", line(60, 60 - GAUGE_R + 7.5, 60, 60 - GAUGE_R + 3, NAVY, 2.6, "ROUND"))
                    + f'<PartDraw name="gaugeMarkerAmb" x="0" y="0" width="120" height="120" alpha="0">'
-                   f"{SHOW_IN_AMBIENT}{line(60, 60 - 35.5, 60, 60 - 41, LUME, 2.6, 'ROUND')}</PartDraw>",
+                   f"{SHOW_IN_AMBIENT}{line(60, 60 - GAUGE_R + 7.5, 60, 60 - GAUGE_R + 3, LUME, 2.6, 'ROUND')}</PartDraw>",
                    turn=angle, box=box)
-    label = (text("gaugeLabel", cx - 50, 156, 100, 16, 12, MUTED, template("phone %d", battery),
-                  spacing=0.08, mode="active")
-             + text("gaugeLabelAmb", cx - 50, 156, 100, 16, 12, AMB_INK, template("phone %d", battery),
-                    spacing=0.08, mode="ambient"))
+    # The reading sits beside the full end of the gauge.
+    x, y = point(70, GAUGE_R + 2, cx, cy)
+    label = (text("gaugeLabel", x + 4, y - 9, 30, 16, 12, MUTED, template("%d", battery), align="START",
+                  mode="active")
+             + text("gaugeLabelAmb", x + 4, y - 9, 30, 16, 12, AMB_INK, template("%d", battery), align="START",
+                    mode="ambient"))
     return condition("phoneValid", valid, fill + marker + label)
 
 
@@ -398,7 +558,7 @@ def forecasts():
             avail = f"[WEATHER.HOURS.{k}.IS_AVAILABLE]"
             # The hour starting k hours after this one, relative to the window.
             turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
-            body = weather_icon(f"wxH{sfx}{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 23, r, img)
+            body = weather_icon(f"wxH{sfx}{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 15, r, img)
             out.append(group(f"wxHour{sfx}{k}", condition(f"wxH{sfx}{k}On", avail, body), turn=turn, mode=mode))
         r = R["dow"] - 2.5
         for d in range(DAILY):
@@ -415,16 +575,19 @@ def moon():
     """Moon phase: a night-blue disc with two moons turning half a turn per
     lunation, seen through a window with two humps, as on a mechanical watch."""
     cx, cy = MOON
-    box = f'x="{round(cx - 40)}" y="{round(cy - 40)}" width="80" height="80"'
-    moons = draw("moons", disc_fill(11.25, MOON_GOLD, 24, 40) + disc_fill(11.25, MOON_GOLD, 56, 40)
-                 + disc_fill(0.9, MOON_GOLD, 40, 20) + disc_fill(0.7, MOON_GOLD, 50, 28)
-                 + disc_fill(0.9, MOON_GOLD, 30, 54) + disc_fill(0.7, MOON_GOLD, 46, 60),
-                 box='x="0" y="0" width="80" height="80"')
-    cover = (f'<Rectangle x="{cx - 40}" y="{cy}" width="80" height="40"><Fill color="#{OPAL}"/></Rectangle>'
-             + disc_fill(16, OPAL, cx - 16, cy) + disc_fill(16, OPAL, cx + 16, cy))
+    half = 42  # half the size of the turning disc's box
+    box = f'x="{round(cx - half)}" y="{round(cy - half)}" width="{2 * half}" height="{2 * half}"'
+    moons = draw("moons", disc_fill(MOON_SIZE, MOON_GOLD, half - MOON_ORBIT, half)
+                 + disc_fill(MOON_SIZE, MOON_GOLD, half + MOON_ORBIT, half),
+                 box=f'x="0" y="0" width="{2 * half}" height="{2 * half}"')
+    # Below the horizon, and the humps that hide the moons around new moon.
+    # The night disc is MOON_R + 2, so the cover reaches past its lower edge.
+    cover = (f'<Rectangle x="{cx - MOON_R - 4}" y="{cy}" width="{2 * MOON_R + 8}" height="{MOON_R + 6}">'
+             f'<Fill color="#{OPAL}"/></Rectangle>'
+             + disc_fill(HUMP_R, OPAL, cx - MOON_ORBIT, cy) + disc_fill(HUMP_R, OPAL, cx + MOON_ORBIT, cy))
     frame = (f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * MOON_R}" height="{2 * MOON_R}" '
              f'startAngle="-90" endAngle="90"><Stroke color="#{GOLD}" thickness="1.5" cap="BUTT"/></Arc>'
-             + line(cx - 38, cy, cx + 38, cy, GOLD, 1.1))
+             + line(cx - MOON_R - 6, cy, cx + MOON_R + 6, cy, GOLD, 1.1))
     # The full moon is at the top when MOON_PHASE_POSITION is half way through its 0-27 cycle.
     return group("moon", draw("night", disc_fill(MOON_R + 2, NIGHT))
                  + group("moonDisc", moons, turn="[MOON_PHASE_POSITION] / 28 * 180", box=box)
@@ -433,12 +596,17 @@ def moon():
 
 def gauge_static():
     cx, cy = MOON
-    track = (f'<Arc centerX="{cx}" centerY="{cy}" width="93" height="93" startAngle="-70" endAngle="70">'
+    track = (f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * GAUGE_R}" height="{2 * GAUGE_R}" startAngle="-70" endAngle="70">'
              f'<Stroke color="#FFD2C6AB" thickness="3" cap="BUTT"/></Arc>')
     ticks = "".join(
-        line(*point(-70 + 14 * i, 45, cx, cy), *point(-70 + 14 * i, 45 - (2.8 if i % 5 == 0 else 1.7), cx, cy),
-             INK, 0.7) for i in range(11))
-    return draw("gauge", track + ticks, mode="active")
+        line(*point(-70 + 14 * i, GAUGE_R - 1.5, cx, cy),
+             *point(-70 + 14 * i, GAUGE_R - 1.5 - (2.8 if i % 5 == 0 else 1.7), cx, cy),
+             INK, 0.7) for i in range(1, 10))
+    # Empty and full stand out on the dial and stay lit in ambient mode.
+    ends = lambda color: "".join(line(*point(a, GAUGE_R + 3, cx, cy), *point(a, GAUGE_R - 5.5, cx, cy), color, 2.2, "ROUND")
+                                 for a in (-70, 70))
+    return (draw("gauge", track + ticks + ends(GOLD), mode="active")
+            + draw("gaugeEndsAmb", ends(LUME), mode="ambient"))
 
 
 def centre():
@@ -501,12 +669,13 @@ def watchface_xml():
 <WatchFace width="{SIZE}" height="{SIZE}" clipShape="CIRCLE">
   <Metadata key="CLOCK_TYPE" value="ANALOG"/>
   <Metadata key="PREVIEW_TIME" value="10:08:32"/>
+  {user_configurations()}
   <Scene backgroundColor="#FF000000">
     {dial()}
-    {disc_print(INK, "active")}
-    {disc_print(AMB_INK, "ambient")}
+    {disc_lettering()}
     {day_marks()}
     {companion_slots()}
+    {quarter_marks()}
     {forecasts()}
     {centre()}
     {next_event()}
@@ -570,6 +739,15 @@ def icons():
             img.save(out / f"wx_{kind}{suffix}.png", optimize=True)
 
 
+def mark_images():
+    """The inward triangle of quarter_marks in each quarter colour, on the dial and in ambient."""
+    for name, color in [(f"mark_{cid}", dial) for cid, dial, _ in QUARTER_COLORS] + \
+                       [(f"mark_{cid}_amb", amb) for cid, _, amb in QUARTER_COLORS]:
+        img = Image.new("RGBA", (10 * SS, 8 * SS), (0, 0, 0, 0))
+        ImageDraw.Draw(img).polygon([(0, 0), (10 * SS, 0), (5 * SS, 8 * SS)], fill=rgba(color))
+        img.resize((40, 32), Image.LANCZOS).save(RES / "drawable-nodpi" / f"{name}.png", optimize=True)
+
+
 def preview_png():
     """A still of the face at 10:08:32 on a Thursday, for the watch face picker."""
     k = SIZE * 2
@@ -608,14 +786,13 @@ def preview_png():
     for i in range(12):
         label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 0.5, 16)
         label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 3, 20)
-        label(ROMAN[i], i * 30 + 8.5 + turns["hour"], R["hour"] - 3, 18)
+        label(ROMAN[i], i * 30 + turns["hour"], R["hour"] - 3, 18)
     for i in range(7):
         label(DOW_LETTERS[i], (i + 0.5) * SEG - 9 + turns["dow"], R["dow"] - 2.5, 17)
     d = ImageDraw.Draw(img)
-    for key in ("hour", "week", "dow"):
-        n = 12 if key == "hour" else 7
-        for i in range(n):
-            a = i * 360 / n + turns[key]
+    for key in ("week", "dow"):
+        for i in range(7):
+            a = i * 360 / 7 + turns[key]
             p, q = point(a, R[key] + HW), point(a, R[key] - HW)
             d.line([(p[0] * s, p[1] * s), (q[0] * s, q[1] * s)], fill=rgba(INK), width=2)
     for r in dial_edges():
@@ -623,12 +800,17 @@ def preview_png():
     cx, cy = MOON
     d.pieslice([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
                fill=rgba(NIGHT))
-    d.ellipse([(cx - 11.25) * s, (cy - 16 - 11.25) * s, (cx + 11.25) * s, (cy - 16 + 11.25) * s], fill=rgba(MOON_GOLD))
-    for hx in (cx - 16, cx + 16):
-        d.ellipse([(hx - 16) * s, (cy - 16) * s, (hx + 16) * s, (cy + 16) * s], fill=rgba(OPAL))
-    d.rectangle([(cx - 40) * s, cy * s, (cx + 40) * s, (cy + 34) * s], fill=rgba(OPAL))
+    m = MOON_ORBIT
+    d.ellipse([(cx - MOON_SIZE) * s, (cy - m - MOON_SIZE) * s, (cx + MOON_SIZE) * s, (cy - m + MOON_SIZE) * s],
+              fill=rgba(MOON_GOLD))
+    for hx in (cx - m, cx + m):
+        d.ellipse([(hx - HUMP_R) * s, (cy - HUMP_R) * s, (hx + HUMP_R) * s, (cy + HUMP_R) * s], fill=rgba(OPAL))
+    d.rectangle([(cx - MOON_R - 4) * s, cy * s, (cx + MOON_R + 4) * s, (cy + MOON_R) * s], fill=rgba(OPAL))
+    d.arc([(cx - MOON_R) * s, (cy - MOON_R) * s, (cx + MOON_R) * s, (cy + MOON_R) * s], 180, 360,
+          fill=rgba(GOLD), width=3)
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    ImageDraw.Draw(layer).arc([(cx - 46.5) * s, (cy - 46.5) * s, (cx + 46.5) * s, (cy + 46.5) * s], -160, -20,
+    g = GAUGE_R
+    ImageDraw.Draw(layer).arc([(cx - g) * s, (cy - g) * s, (cx + g) * s, (cy + g) * s], -160, -20,
                               fill=rgba("FFD2C6AB"), width=3 * s)
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)
@@ -649,6 +831,7 @@ def main():
         (RES / sub).mkdir(parents=True, exist_ok=True)
     (RES / "raw" / "watchface.xml").write_text(watchface_xml(), encoding="utf-8")
     icons()
+    mark_images()
     preview_png()
 
 

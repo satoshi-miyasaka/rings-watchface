@@ -581,7 +581,8 @@ def moon():
                  + disc_fill(MOON_SIZE, MOON_GOLD, half + MOON_ORBIT, half),
                  box=f'x="0" y="0" width="{2 * half}" height="{2 * half}"')
     # Below the horizon, and the humps that hide the moons around new moon.
-    cover = (f'<Rectangle x="{cx - MOON_R - 4}" y="{cy}" width="{2 * MOON_R + 8}" height="{MOON_R}">'
+    # The night disc is MOON_R + 2, so the cover reaches past its lower edge.
+    cover = (f'<Rectangle x="{cx - MOON_R - 4}" y="{cy}" width="{2 * MOON_R + 8}" height="{MOON_R + 6}">'
              f'<Fill color="#{OPAL}"/></Rectangle>'
              + disc_fill(HUMP_R, OPAL, cx - MOON_ORBIT, cy) + disc_fill(HUMP_R, OPAL, cx + MOON_ORBIT, cy))
     frame = (f'<Arc centerX="{cx}" centerY="{cy}" width="{2 * MOON_R}" height="{2 * MOON_R}" '

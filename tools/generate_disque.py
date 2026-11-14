@@ -42,11 +42,11 @@ C = SIZE / 2
 HW = 11.5  # half the width of a disc's band
 
 # Discs from the outside in, as in Rings: radius of the band's centre line.
-R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "week": 134.5, "dow": 115.0}
-# Half the width of each band: the week disc is a thin ring for the schedule line.
-HALF = {"sec": HW, "min": HW, "hour": HW, "week": 4.5, "dow": HW}
+# The week's events run along the weekday disc's outer edge, as the hours'
+# and minutes' events do on theirs, so there are four bands.
+R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "dow": 127.5}
 FLANGE_R = 223.0
-CENTER_R = 103.5
+CENTER_R = 116.0
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
 MOON_R = 40.0  # radius of the moon aperture
 MOON_SIZE = 12.8  # radius of each moon
@@ -79,7 +79,7 @@ AMB_RED = "FFA05A55"
 AMB_BLUE = "FF566D9C"
 AMB_GREEN = "FF4F7A62"
 
-BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "week": BAND_B, "dow": BAND_A}
+BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "dow": BAND_B}
 FONT = "cormorant_bold"
 SEG = 360 / 7
 
@@ -287,19 +287,19 @@ def lit(name, r, a0, a1, color, width, ambient=LUME, ambient_alpha=150):
 # Where events sit on each disc: (radius, width).
 MIN_EVENT = (R["min"] + HW - 2.75, 5.5)
 HOUR_EVENT = (R["hour"] + HW - 2.75, 5.5)
-WEEK_EVENT = (R["week"], 5.5)
+WEEK_EVENT = (R["dow"] + HW - 2.75, 5.5)
 DAY_MARK = (R["dow"] - HW + 2.25, 4.5)  # inner edge: days off, holidays, all-day events
 
 
 def dial_edges():
-    return [R["sec"] + HW] + [(R[a] - HALF[a] + R[b] + HALF[b]) / 2 for a, b in
-                              (("sec", "min"), ("min", "hour"), ("hour", "week"), ("week", "dow"))] + [CENTER_R]
+    return [R["sec"] + HW] + [(R[a] - HW + R[b] + HW) / 2 for a, b in
+                              (("sec", "min"), ("min", "hour"), ("hour", "dow"))] + [CENTER_R]
 
 
 def dial():
     edges = dial_edges()
     face = (disc_fill(FLANGE_R, FLANGE)
-            + "".join(circle(R[k], BANDS[k], 2 * HALF[k]) for k in R)
+            + "".join(circle(R[k], BANDS[k], 2 * HW) for k in R)
             + disc_fill(CENTER_R, OPAL))
     seps = "".join(circle(r, INK, 0.7) for r in edges)
     amb_seps = "".join(circle(r, AMB_LINE, 1.2) for r in edges)
@@ -359,13 +359,9 @@ def disc_print(ink, mode, font):
     # The hours sit where the dividers used to be: each numeral marks the start of its hour.
     out.append(group(f"hourDisc{tag}", numerals("hour", ROMAN), turn=TURN["hour"], mode=mode))
 
-    r = R["week"]
-    body = draw(f"weekTicks{tag}", radial_ticks(r + HALF["week"], r - HALF["week"], 7, ink, 0.8))
-    out.append(group(f"weekDisc{tag}", body, turn=TURN["week"], mode=mode))
-
     # Like the hours, each weekday's letter sits at the start of its day, with no dividers.
     r = R["dow"]
-    body = "".join(label(f"dow{tag}{i}", i * SEG, r + 2.5, "dow", DOW_LETTERS[i]) for i in range(7))
+    body = "".join(label(f"dow{tag}{i}", i * SEG, r - 0.5, "dow", DOW_LETTERS[i]) for i in range(7))
     out.append(group(f"dowDisc{tag}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
 
@@ -573,7 +569,7 @@ def forecasts():
             turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
             body = weather_icon(f"wxH{sfx}{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 15, r, img)
             out.append(group(f"wxHour{sfx}{k}", condition(f"wxH{sfx}{k}On", avail, body), turn=turn, mode=mode))
-        r = R["dow"] + 2.5
+        r = R["dow"] - 0.5
         for d in range(DAILY):
             avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
             turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
@@ -774,11 +770,10 @@ def preview_png():
     d = ImageDraw.Draw(img)
     d.ellipse([(C - FLANGE_R) * s] * 2 + [(C + FLANGE_R) * s] * 2, fill=rgba(FLANGE))
     for key, r in R.items():
-        ring(r, 2 * HALF[key], BANDS[key])
+        ring(r, 2 * HW, BANDS[key])
     d.ellipse([(C - CENTER_R) * s] * 2 + [(C + CENTER_R) * s] * 2, fill=rgba(OPAL))
     turns = {"sec": -32 * 6, "min": -(8 + 32 / 60) * 6, "hour": -(10 + 8 / 60) * 30,
              "dow": -(4 + 10.14 / 24) * SEG}
-    turns["week"] = turns["dow"]
 
     def label(txt, angle, r, size):
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -795,13 +790,8 @@ def preview_png():
         label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 3, 20)
         label(ROMAN[i], i * 30 + turns["hour"], R["hour"] - 3, 18)
     for i in range(7):
-        label(DOW_LETTERS[i], i * SEG + turns["dow"], R["dow"] + 2.5, 17)
+        label(DOW_LETTERS[i], i * SEG + turns["dow"], R["dow"] - 0.5, 17)
     d = ImageDraw.Draw(img)
-    for key in ("week",):
-        for i in range(7):
-            a = i * 360 / 7 + turns[key]
-            p, q = point(a, R[key] + HALF[key]), point(a, R[key] - HALF[key])
-            d.line([(p[0] * s, p[1] * s), (q[0] * s, q[1] * s)], fill=rgba(INK), width=2)
     for r in dial_edges():
         ring(r, 0.7, INK)
     cx, cy = MOON

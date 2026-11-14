@@ -24,4 +24,11 @@
     <string name="sec_motion_tick">1秒ごと</string>
     <string name="sec_motion_beat">1秒に8回(電池多め)</string>
     <string name="sec_motion_off">止める(秒なし)</string>
+    <string name="cfg_rest_day_0">定休日: 日曜</string>
+    <string name="cfg_rest_day_1">定休日: 月曜</string>
+    <string name="cfg_rest_day_2">定休日: 火曜</string>
+    <string name="cfg_rest_day_3">定休日: 水曜</string>
+    <string name="cfg_rest_day_4">定休日: 木曜</string>
+    <string name="cfg_rest_day_5">定休日: 金曜</string>
+    <string name="cfg_rest_day_6">定休日: 土曜</string>
 </resources>

@@ -75,9 +75,6 @@ MOON_GOLD = "FFE2BC62"
 LUME = "FF9FDCC4"
 AMB_INK = "FFB4B8BE"
 AMB_LINE = "FF55595F"
-AMB_RED = "FFA05A55"
-AMB_BLUE = "FF566D9C"
-AMB_GREEN = "FF4F7A62"
 
 BANDS = {"sec": BAND_A, "min": BAND_B, "hour": BAND_A, "dow": BAND_B}
 FONT = "cormorant_bold"
@@ -288,7 +285,12 @@ def lit(name, r, a0, a1, color, width, ambient=LUME, ambient_alpha=150):
 MIN_EVENT = (R["min"] + HW - 2.75, 5.5)
 HOUR_EVENT = (R["hour"] + HW - 2.75, 5.5)
 WEEK_EVENT = (R["dow"] + HW - 2.75, 5.5)
-DAY_MARK = (R["dow"] - HW + 2.25, 4.5)  # inner edge: days off, holidays, all-day events
+# Weekday letters sit between the week's events on the outer edge and the inner edge.
+DOW_LETTER_R = R["dow"] - 2.5
+# Letter colours for days off and all-day events: (on the dial, in ambient).
+DAY_RED = (RED, "FFEC6E63")
+DAY_BLUE = (BLUE, "FF86AAF2")
+DAY_GREEN = (GREEN, "FF7CC496")
 
 
 def dial_edges():
@@ -361,7 +363,7 @@ def disc_print(ink, mode, font):
 
     # Like the hours, each weekday's letter sits at the start of its day, with no dividers.
     r = R["dow"]
-    body = "".join(label(f"dow{tag}{i}", i * SEG, r - 0.5, "dow", DOW_LETTERS[i]) for i in range(7))
+    body = "".join(label(f"dow{tag}{i}", i * SEG, DOW_LETTER_R, "dow", DOW_LETTERS[i]) for i in range(7))
     out.append(group(f"dowDisc{tag}", body, turn=TURN["dow"], mode=mode))
     return "".join(out)
 
@@ -422,30 +424,45 @@ def user_configurations():
 REST_DAYS_DEFAULT = (0, 6)  # Sunday and Saturday
 
 
+def day_letter(name, i, colors):
+    """Weekday letter i redrawn in a colour over the plain one, in the chosen
+    font, on the dial and in ambient. Not turned: put it in a group that turns
+    with the weekday disc."""
+    dial, amb = colors
+    options = ""
+    for font in FONTS:
+        fid, res = font[0], font[1]
+        size, w, h = lettering(font, "dow", DOW_LETTERS[i])
+        options += (f'<ListOption id="{fid}">'
+                    + group(f"{name}{fid}",
+                            on_disc(f"{name}{fid}D", i * SEG, DOW_LETTER_R, w, h, size, dial, DOW_LETTERS[i],
+                                    mode="active", family=res)
+                            + on_disc(f"{name}{fid}A", i * SEG, DOW_LETTER_R, w, h, size, amb, DOW_LETTERS[i],
+                                      mode="ambient", family=res))
+                    + "</ListOption>")
+    return f'<ListConfiguration id="discFont">{options}</ListConfiguration>'
+
+
 def day_marks():
-    """The regular days off chosen in the editor (Saturday in blue, the rest
-    in red) and holidays from a week before, on the weekday disc."""
-    r, w = DAY_MARK
+    """Weekday letters in colour for the regular days off chosen in the editor
+    (Saturday in blue, the rest in red) and for holidays in the coming week (red)."""
     body = ""
     for i in range(7):
-        color, amb = (BLUE, AMB_BLUE) if i == 6 else (RED, AMB_RED)
+        colors = DAY_BLUE if i == 6 else DAY_RED
         body += (f'<BooleanConfiguration id="restDay{i}">'
-                 f'<BooleanOption id="TRUE">'
-                 f'{group(f"restDay{i}", lit(f"restDay{i}", r, i * SEG, (i + 1) * SEG, color, w, amb, 255))}'
+                 f'<BooleanOption id="TRUE">{group(f"restDay{i}", day_letter(f"restDay{i}", i, colors))}'
                  f'</BooleanOption><BooleanOption id="FALSE">{rings.empty()}</BooleanOption>'
                  "</BooleanConfiguration>")
     by_index = {i: [] for i in range(7)}
     for year in rings.HOLIDAY_YEARS:
         for d in rings.japanese_holidays(year):
             idx = rings.ring_index(d)
-            if idx:
-                lo = d - rings.dt.timedelta(days=6)
-                by_index[idx].append((int(lo.strftime("%Y%m%d")), int(d.strftime("%Y%m%d"))))
+            lo = d - rings.dt.timedelta(days=6)
+            by_index[idx].append((int(lo.strftime("%Y%m%d")), int(d.strftime("%Y%m%d"))))
     for idx, ranges in by_index.items():
         if ranges:
             terms = " || ".join(f"({rings.DATE_NUM} >= {lo} && {hi} >= {rings.DATE_NUM})" for lo, hi in ranges)
-            body += condition(f"holiday{idx}", terms, lit(f"holiday{idx}", r, idx * SEG, (idx + 1) * SEG,
-                                                            RED, w, AMB_RED, 255))
+            body += condition(f"holiday{idx}", terms, group(f"holiday{idx}", day_letter(f"holiday{idx}", idx, DAY_RED)))
     return group("dayMarks", body, turn=TURN["dow"])
 
 
@@ -517,15 +534,14 @@ def companion_slots():
     week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
     week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
 
-    mr, mw = DAY_MARK
     all_day_b = "".join(condition(f"allDay{d}", bit(f"({T} - 1)", 19 + d),
-                                  lit(f"allDay{d}", mr, d * SEG, (d + 1) * SEG, GREEN, mw, AMB_GREEN, 255))
+                                  group(f"allDay{d}", day_letter(f"allDay{d}", d, DAY_GREEN)))
                         for d in range(5))
     all_day_m = "".join(condition(f"allDay{d}", bit(f"({T} - 1)", 20 + d - 5),
-                                  lit(f"allDay{d}", mr, d * SEG, (d + 1) * SEG, GREEN, mw, AMB_GREEN, 255))
+                                  group(f"allDay{d}", day_letter(f"allDay{d}", d, DAY_GREEN)))
                         for d in range(5, 7))
     days_off = "".join(condition(f"dayOff{d}", bit(f"({T} - 1)", 12 + d),
-                                 lit(f"dayOff{d}", mr, d * SEG, (d + 1) * SEG, RED, mw, AMB_RED, 255))
+                                 group(f"dayOff{d}", day_letter(f"dayOff{d}", d, DAY_RED)))
                        for d in range(7))
 
     minutes_high = (minute_segments("minHi", V, 24, range(24, 48))
@@ -569,7 +585,7 @@ def forecasts():
             turn = f"{k * 30} - ([MINUTE_SECOND]) * 0.5"
             body = weather_icon(f"wxH{sfx}{k}", avail, f"[WEATHER.HOURS.{k}.CONDITION]", 15, r, img)
             out.append(group(f"wxHour{sfx}{k}", condition(f"wxH{sfx}{k}On", avail, body), turn=turn, mode=mode))
-        r = R["dow"] - 0.5
+        r = DOW_LETTER_R
         for d in range(DAILY):
             avail = f"[WEATHER.DAYS.{d}.IS_AVAILABLE]"
             turn = f"({d} + 0.5) * {SEG:.4f} - [HOUR_0_23_MINUTE] / 24 * {SEG:.4f}"
@@ -775,22 +791,21 @@ def preview_png():
     turns = {"sec": -32 * 6, "min": -(8 + 32 / 60) * 6, "hour": -(10 + 8 / 60) * 30,
              "dow": -(4 + 10.14 / 24) * SEG}
 
-    def label(txt, angle, r, size):
+    def label(txt, angle, r, size, color=INK):
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        ImageDraw.Draw(layer).text((C * s, (C - r) * s), txt, font=font(size), fill=rgba(INK), anchor="mm")
+        ImageDraw.Draw(layer).text((C * s, (C - r) * s), txt, font=font(size), fill=rgba(color), anchor="mm")
         img.alpha_composite(layer.rotate(-angle, resample=Image.BICUBIC, center=(C * s, C * s)))
 
     ring(HOUR_EVENT[0], HOUR_EVENT[1], NAVY, 14 * 30 % 360 + turns["hour"], 15 * 30 % 360 + turns["hour"])
     ring(WEEK_EVENT[0], WEEK_EVENT[1], BURGUNDY, 4 * SEG + 5 * SEG / 12 + turns["dow"],
          4 * SEG + 6 * SEG / 12 + turns["dow"])
-    ring(DAY_MARK[0], DAY_MARK[1], RED, turns["dow"], SEG + turns["dow"])
-    ring(DAY_MARK[0], DAY_MARK[1], BLUE, 6 * SEG + turns["dow"], 7 * SEG + turns["dow"])
     for i in range(12):
         label(f"{i * 5:02d}", i * 30 + turns["sec"], R["sec"] - 0.5, 16)
         label(f"{i * 5:02d}", i * 30 + turns["min"], R["min"] - 3, 20)
         label(ROMAN[i], i * 30 + turns["hour"], R["hour"] - 3, 18)
     for i in range(7):
-        label(DOW_LETTERS[i], i * SEG + turns["dow"], R["dow"] - 0.5, 17)
+        color = DAY_RED[0] if i == 0 else DAY_BLUE[0] if i == 6 else INK
+        label(DOW_LETTERS[i], i * SEG + turns["dow"], DOW_LETTER_R, 17, color)
     d = ImageDraw.Draw(img)
     for r in dial_edges():
         ring(r, 0.7, INK)

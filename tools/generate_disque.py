@@ -290,7 +290,7 @@ HOUR_EVENT = (R["hour"] + HALF["hour"] - 2.75, 5.5)
 WEEK_EVENT = (R["dow"] + HALF["dow"] - 2.75, 5.5)
 # Where a run of events ends, its line stops this many degrees short of the
 # boundary, so an event that ends at 18:00 does not seem to reach the VI.
-EVENT_END_GAP = {"hour": 3.0, "min": 2.0, "week": 1.5}
+EVENT_END_GAP = {"hour": 2.5, "min": 2.0, "week": 1.5}
 # Weekday letters sit between the week's events on the outer edge and the inner edge.
 DOW_LETTER_R = R["dow"] - 2.5
 # Letter colours for days off and all-day events: (on the dial, in ambient).
@@ -552,8 +552,9 @@ def gauge_parts(battery, valid):
 
 def companion_slots():
     r, w = HOUR_EVENT
-    hour = "".join(event_segment(f"hourBit{i}", bit(V, i), bit(V, (i + 1) % 12), r, i * 30, (i + 1) * 30,
-                                 EVENT_END_GAP["hour"], NAVY, w) for i in range(12))
+    # 24 half-hour segments, as in Rings.
+    hour = "".join(event_segment(f"hourBit{i}", bit(V, i), bit(V, (i + 1) % 24), r, i * 15, (i + 1) * 15,
+                                 EVENT_END_GAP["hour"], NAVY, w) for i in range(24))
     hour_slot = (group("hourEvents", hour, turn=TURN["hour"])
                  + group("minEventsLow", minute_segments("minLo", f"({T} - 1)", 0, range(24)), turn=TURN["min"]))
 

@@ -17,23 +17,32 @@ class RingsTest {
     @Test
     fun hourRingShowsThisHalfOfTheDay() {
         val events = longArrayOf(
-            ms(2026, 10, 16, 9, 0), ms(2026, 10, 16, 10, 0), // passed this morning: bit 9
-            ms(2026, 10, 16, 1, 0), ms(2026, 10, 16, 1, 30), // 1 o'clock last night: bit 1
+            ms(2026, 10, 16, 9, 0), ms(2026, 10, 16, 10, 0), // passed this morning: bits 18, 19
+            ms(2026, 10, 16, 1, 0), ms(2026, 10, 16, 1, 30), // 1 o'clock last night: bit 2
             ms(2026, 10, 16, 13, 0), ms(2026, 10, 16, 14, 0), // this afternoon: next lap, not shown
             ms(2026, 10, 15, 23, 0), ms(2026, 10, 16, 0, 0), // yesterday: not shown
         )
         val mask = Rings.hourMask(events, now, tokyo)
-        assertEquals((1 shl 9) or (1 shl 1), mask)
+        assertEquals((1 shl 18) or (1 shl 19) or (1 shl 2), mask)
+    }
+
+    @Test
+    fun hourRingLightsHalfHours() {
+        val events = longArrayOf(
+            ms(2026, 10, 16, 17, 0), ms(2026, 10, 16, 18, 30), // 5:00-6:30: bits 10, 11, 12, not 13
+        )
+        val mask = Rings.hourMask(events, ms(2026, 10, 16, 12, 0), tokyo)
+        assertEquals((1 shl 10) or (1 shl 11) or (1 shl 12), mask)
     }
 
     @Test
     fun hourRingMovesToTheAfternoonAtNoon() {
         val events = longArrayOf(
             ms(2026, 10, 16, 9, 0), ms(2026, 10, 16, 10, 0), // this morning: gone
-            ms(2026, 10, 16, 13, 0), ms(2026, 10, 16, 14, 0), // 1 o'clock: bit 1
+            ms(2026, 10, 16, 13, 0), ms(2026, 10, 16, 14, 0), // 1 o'clock: bits 2, 3
         )
         val mask = Rings.hourMask(events, ms(2026, 10, 16, 12, 0), tokyo)
-        assertEquals(1 shl 1, mask)
+        assertEquals((1 shl 2) or (1 shl 3), mask)
     }
 
     @Test
@@ -108,12 +117,12 @@ class RingsTest {
     fun everyFiveMinutesTheHourRingShowsTheNextLapBehindTheHand() {
         val events = longArrayOf(
             ms(2026, 10, 16, 9, 0), ms(2026, 10, 16, 10, 0), // passed this morning: gone
-            ms(2026, 10, 16, 21, 0), ms(2026, 10, 16, 21, 30), // 9 tonight: bit 9, behind the hand
-            ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 30), // in progress: bit 11 stays
-            ms(2026, 10, 16, 23, 0), ms(2026, 10, 16, 23, 30), // tonight at 11: not before 12:00
+            ms(2026, 10, 16, 21, 0), ms(2026, 10, 16, 21, 30), // 9 tonight: bit 18, behind the hand
+            ms(2026, 10, 16, 11, 0), ms(2026, 10, 16, 11, 30), // in progress: bit 22 stays
+            ms(2026, 10, 16, 23, 0), ms(2026, 10, 16, 23, 30), // tonight at 11: not before 11:30
         )
         val mask = Rings.hourMask(events, now, tokyo, rolling = true)
-        assertEquals((1 shl 9) or (1 shl 11), mask)
+        assertEquals((1 shl 18) or (1 shl 22), mask)
     }
 
     @Test

@@ -53,8 +53,9 @@ MOON_R = 40.0  # radius of the moon aperture
 # whole at the top; the humps are a little larger than the moons to hide them
 # at new moon.
 MOON_SIZE = 15.8  # radius of each moon
-MOON_ORBIT = MOON_R - MOON_SIZE  # distance of the moons from the disc's centre
-HUMP_R = MOON_SIZE + 1.0  # the humps sit on the horizon under the moons at new moon
+# 1.5 px in from the rim, so the rim's gold line does not cover the moon's top.
+MOON_ORBIT = MOON_R - MOON_SIZE - 1.5  # distance of the moons from the disc's centre
+HUMP_R = MOON_SIZE + 0.5  # the humps sit on the horizon under the moons at new moon
 GAUGE_R = 50.0  # centre line of the battery gauge around the aperture
 
 # Colours (ARGB)

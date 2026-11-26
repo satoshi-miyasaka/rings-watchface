@@ -65,6 +65,10 @@ python3 tools/generate_disque.py
 ./gradlew :disque:assembleDebug
 ```
 
+## 変更履歴
+
+仕様や見た目が変わる変更は `CHANGELOG.md` に、誰の依頼か・どのアプリを入れ替えるかと一緒に書きます。
+
 ## 開発メモ
 
 - 予定を渡すデータ用の枠は、文字盤の編集画面に出ない固定の枠にしています。

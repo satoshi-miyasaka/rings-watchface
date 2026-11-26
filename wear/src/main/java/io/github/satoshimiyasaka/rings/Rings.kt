@@ -62,11 +62,11 @@ class Inputs(
  * The watch face side lives in tools/generate_watchface.py.
  */
 object Rings {
-    const val HOUR_SEGMENTS = 12
+    const val HOUR_SEGMENTS = 24
     const val WEEK_BLOCKS = 12
     const val MINUTE_SEGMENTS = 60
 
-    private const val HOUR_MIN = 60L
+    private const val HALF_HOUR_MIN = 30L
     private const val BLOCK_MIN = 120L
 
     // The phone syncs hourly; past this its battery reading is left off the ring.
@@ -88,9 +88,9 @@ object Rings {
         val lapStart = if (time.hour < 12) 0L else 12 * 60L
         var mask = 0
         for (i in 0 until HOUR_SEGMENTS) {
-            var start = at(time.toLocalDate(), lapStart + i * HOUR_MIN, zone)
-            if (rolling && start.plusMinutes(HOUR_MIN).toEpochMilli() <= now) start = start.plusHours(12)
-            val end = start.plusMinutes(HOUR_MIN)
+            var start = at(time.toLocalDate(), lapStart + i * HALF_HOUR_MIN, zone)
+            if (rolling && start.plusMinutes(HALF_HOUR_MIN).toEpochMilli() <= now) start = start.plusHours(12)
+            val end = start.plusMinutes(HALF_HOUR_MIN)
             if (busy(events, start.toEpochMilli(), end.toEpochMilli())) mask = mask or (1 shl i)
         }
         return mask

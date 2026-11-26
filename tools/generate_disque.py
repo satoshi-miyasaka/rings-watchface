@@ -39,19 +39,23 @@ RES = ROOT / "disque" / "src" / "main" / "res"
 
 SIZE = 450
 C = SIZE / 2
-HW = 11.5  # half the width of a disc's band
-
-# Discs from the outside in, as in Rings: radius of the band's centre line.
-# The week's events run along the weekday disc's outer edge, as the hours'
-# and minutes' events do on theirs, so there are four bands.
-R = {"sec": 207.0, "min": 180.5, "hour": 154.0, "dow": 127.5}
+# Discs from the outside in, as in Rings: radius of the band's centre line,
+# and half the band's width. The week's events run along the weekday disc's
+# outer edge, as the hours' and minutes' events do on theirs, so there are
+# four bands; the seconds band is the narrowest.
+R = {"sec": 208.5, "min": 182.0, "hour": 152.5, "dow": 123.0}
+HALF = {"sec": 10.0, "min": 13.0, "hour": 13.0, "dow": 13.0}
 FLANGE_R = 223.0
-CENTER_R = 116.0
+CENTER_R = 110.0
 MOON = (C, 221.0)  # centre of the moon aperture and the gauge above it
 MOON_R = 40.0  # radius of the moon aperture
-MOON_SIZE = 12.8  # radius of each moon
-MOON_ORBIT = 24.8  # distance of the moons from the disc's centre
-HUMP_R = 14.4  # the humps sit on the horizon under the moons at new moon
+# A full moon just touches the aperture's rim and the two humps, so it shows
+# whole at the top; the humps are a little larger than the moons to hide them
+# at new moon.
+MOON_SIZE = 15.8  # radius of each moon
+# 1.5 px in from the rim, so the rim's gold line does not cover the moon's top.
+MOON_ORBIT = MOON_R - MOON_SIZE - 1.5  # distance of the moons from the disc's centre
+HUMP_R = MOON_SIZE + 0.5  # the humps sit on the horizon under the moons at new moon
 GAUGE_R = 50.0  # centre line of the battery gauge around the aperture
 
 # Colours (ARGB)
@@ -90,10 +94,10 @@ FONTS = (
     ("cinzel", "cinzel_bold", 0.72, 0.70),
     ("jost", "jost_semibold", 0.73, 0.70),
 )
-CLASSIC_SIZE = {"sec": 16, "min": 20, "minLarge": 24, "minQuarter": 26, "minSmall": 18,
-                "hour": 18, "hourLarge": 21, "hourQuarter": 23, "hourSmall": 16, "dow": 17}
-LETTER_HEIGHT = {"sec": 11, "min": 12.5, "minLarge": 14.5, "minQuarter": 15.5, "minSmall": 11,
-                 "hour": 12, "hourLarge": 14, "hourQuarter": 15, "hourSmall": 10.5, "dow": 11.5}
+CLASSIC_SIZE = {"sec": 16, "min": 22.5, "minLarge": 27, "minQuarter": 29, "minSmall": 20,
+                "hour": 20, "hourLarge": 24, "hourQuarter": 26, "hourSmall": 18, "dow": 19}
+LETTER_HEIGHT = {"sec": 11, "min": 14, "minLarge": 16.5, "minQuarter": 17.5, "minSmall": 12.5,
+                 "hour": 13.5, "hourLarge": 16, "hourQuarter": 17, "hourSmall": 12, "dow": 13}
 
 
 def capitals(role):
@@ -282,9 +286,12 @@ def lit(name, r, a0, a1, color, width, ambient=LUME, ambient_alpha=150):
 # ---------------------------------------------------------------- the dial
 
 # Where events sit on each disc: (radius, width).
-MIN_EVENT = (R["min"] + HW - 2.75, 5.5)
-HOUR_EVENT = (R["hour"] + HW - 2.75, 5.5)
-WEEK_EVENT = (R["dow"] + HW - 2.75, 5.5)
+MIN_EVENT = (R["min"] + HALF["min"] - 2.75, 5.5)
+HOUR_EVENT = (R["hour"] + HALF["hour"] - 2.75, 5.5)
+WEEK_EVENT = (R["dow"] + HALF["dow"] - 2.75, 5.5)
+# Where a run of events ends, its line stops this many degrees short of the
+# boundary, so an event that ends at 18:00 does not seem to reach the VI.
+EVENT_END_GAP = {"hour": 2.5, "min": 2.0, "week": 1.5}
 # Weekday letters sit between the week's events on the outer edge and the inner edge.
 DOW_LETTER_R = R["dow"] - 2.5
 # Letter colours for days off and all-day events: (on the dial, in ambient).
@@ -294,18 +301,18 @@ DAY_GREEN = (GREEN, "FF7CC496")
 
 
 def dial_edges():
-    return [R["sec"] + HW] + [(R[a] - HW + R[b] + HW) / 2 for a, b in
+    return [R["sec"] + HALF["sec"]] + [(R[a] - HALF[a] + R[b] + HALF[b]) / 2 for a, b in
                               (("sec", "min"), ("min", "hour"), ("hour", "dow"))] + [CENTER_R]
 
 
 def dial():
     edges = dial_edges()
     face = (disc_fill(FLANGE_R, FLANGE)
-            + "".join(circle(R[k], BANDS[k], 2 * HW) for k in R)
+            + "".join(circle(R[k], BANDS[k], 2 * HALF[k]) for k in R)
             + disc_fill(CENTER_R, OPAL))
     seps = "".join(circle(r, INK, 0.7) for r in edges)
     amb_seps = "".join(circle(r, AMB_LINE, 1.2) for r in edges)
-    flange = radial_ticks(FLANGE_R, R["sec"] + HW + 0.5, 120, INK, 0.6)
+    flange = radial_ticks(FLANGE_R, R["sec"] + HALF["sec"] + 0.5, 120, INK, 0.6)
     return (draw("face", face, mode="active")
             + draw("separators", seps, mode="active")
             + draw("flangeTicks", flange, mode="active")
@@ -344,7 +351,7 @@ def disc_print(ink, mode, font):
 
     if mode == "active":  # the seconds disc stays out of ambient
         r = R["sec"]
-        body = draw(f"secTicks{fid}", radial_ticks(r + HW, r + HW - 3, 60, ink, 0.9, skip=5))
+        body = draw(f"secTicks{fid}", radial_ticks(r + HALF["sec"], r + HALF["sec"] - 3, 60, ink, 0.9, skip=5))
         body += "".join(label(f"sec{fid}{i}", i * 30, r - 0.5, "sec", f"{i * 5:02d}") for i in range(12))
         options = "".join(
             f'<ListOption id="{opt}">'
@@ -354,7 +361,7 @@ def disc_print(ink, mode, font):
                          mode=mode))
 
     r = R["min"]
-    body = (draw(f"minTicks{tag}", radial_ticks(r - HW, r - HW + 2.8, 60, ink, 0.7, skip=5))
+    body = (draw(f"minTicks{tag}", radial_ticks(r - HALF["min"], r - HALF["min"] + 2.8, 60, ink, 0.7, skip=5))
             + numerals("min", [f"{i * 5:02d}" for i in range(12)]))
     out.append(group(f"minDisc{tag}", body, turn=TURN["min"], mode=mode))
 
@@ -382,7 +389,7 @@ def quarter_marks():
     other quarters, on the outer edge of the hour and minute discs over the
     events, in the quarter colour; switched in the editor."""
     def marks(disc, cid, dial, amb):
-        r = R[disc] + HW
+        r = R[disc] + HALF[disc]
         lines = lambda color: "".join(line(*point(a, r), *point(a, r - 5.5), color, 1.8) for a in (90, 180, 270))
         tri = lambda name, res, alpha: (f'<PartImage name="{name}" x="{round(C - 5)}" y="{round(C - r)}" '
                                         f'width="10" height="8"{alpha}><Image resource="{res}"/>'
@@ -487,18 +494,38 @@ def bit(field, i):
     return rings.bit(field, i)
 
 
-def minute_segments(prefix, field, shift, ks):
+def event_segment(name, this, after, r, a0, a1, gap, color, width, **kw):
+    """A lit segment from a0 to a1 while [this] is set. When the next segment
+    is off it stops gap degrees short, so a run of events ends visibly before
+    the next boundary. after is None where the next segment lives in another
+    complication and cannot be read; the segment then runs to the boundary."""
+    full = lit(f"{name}F", r, a0, a1, color, width, **kw)
+    if after is None:
+        return condition(name, this, full)
+    return choose(name, [("Run", f"({this}) && ({after})", full),
+                         ("End", this, lit(f"{name}E", r, a0, a1 - gap, color, width, **kw))])
+
+
+def minute_segments(prefix, field, shift, ks, after_last=None):
+    """Minutes ks from field (bit k - shift). after_last: the bit after the
+    last one, if it is in the same complication."""
     r, w = MIN_EVENT
-    return "".join(condition(f"{prefix}{k}", bit(field, k - shift),
-                             lit(f"{prefix}Seg{k}", r, k * 6, (k + 1) * 6, NAVY, w)) for k in ks)
+    last = ks[-1]
+    return "".join(event_segment(f"{prefix}{k}", bit(field, k - shift),
+                                 bit(field, k + 1 - shift) if k < last else after_last,
+                                 r, k * 6, (k + 1) * 6, EVENT_END_GAP["min"], NAVY, w) for k in ks)
 
 
-def week_day(day, field, shift, offset=""):
+def week_day(day, field, shift, offset="", after_last=None):
+    """The 2-hour blocks of one weekday. after_last: the next day's first
+    block, if it is in the same complication."""
     r, w = WEEK_EVENT
     block = SEG / 12
-    return "".join(condition(f"week{day}b{b}", bit(f"({field}{offset})", shift + b),
-                             lit(f"week{day}s{b}", r, day * SEG + b * block, day * SEG + (b + 1) * block,
-                                 BURGUNDY, w, ambient_alpha=110))
+    f = f"({field}{offset})"
+    return "".join(event_segment(f"week{day}b{b}", bit(f, shift + b),
+                                 bit(f, shift + b + 1) if b < 11 else after_last,
+                                 r, day * SEG + b * block, day * SEG + (b + 1) * block, EVENT_END_GAP["week"],
+                                 BURGUNDY, w, ambient_alpha=110)
                    for b in range(12))
 
 
@@ -526,13 +553,17 @@ def gauge_parts(battery, valid):
 
 def companion_slots():
     r, w = HOUR_EVENT
-    hour = "".join(condition(f"hourBit{i}", bit(V, i), lit(f"hourSeg{i}", r, i * 30, (i + 1) * 30, NAVY, w))
-                   for i in range(12))
+    # 24 half-hour segments, as in Rings.
+    hour = "".join(event_segment(f"hourBit{i}", bit(V, i), bit(V, (i + 1) % 24), r, i * 15, (i + 1) * 15,
+                                 EVENT_END_GAP["hour"], NAVY, w) for i in range(24))
     hour_slot = (group("hourEvents", hour, turn=TURN["hour"])
                  + group("minEventsLow", minute_segments("minLo", f"({T} - 1)", 0, range(24)), turn=TURN["min"]))
 
-    week_a = week_day(0, V, 0) + week_day(1, V, 12) + week_day(2, T, 0, " - 1") + week_day(3, T, 12, " - 1")
-    week_b = week_day(4, V, 0) + week_day(5, V, 12) + week_day(6, T, 0, " - 1")
+    t1 = f"({T} - 1)"
+    week_a = (week_day(0, V, 0, after_last=bit(V, 12)) + week_day(1, V, 12, after_last=bit(t1, 0))
+              + week_day(2, T, 0, " - 1", after_last=bit(t1, 12)) + week_day(3, T, 12, " - 1"))
+    week_b = (week_day(4, V, 0, after_last=bit(V, 12)) + week_day(5, V, 12, after_last=bit(t1, 0))
+              + week_day(6, T, 0, " - 1"))
 
     all_day_b = "".join(condition(f"allDay{d}", bit(f"({T} - 1)", 19 + d),
                                   group(f"allDay{d}", day_letter(f"allDay{d}", d, DAY_GREEN)))
@@ -544,7 +575,7 @@ def companion_slots():
                                  group(f"dayOff{d}", day_letter(f"dayOff{d}", d, DAY_RED)))
                        for d in range(7))
 
-    minutes_high = (minute_segments("minHi", V, 24, range(24, 48))
+    minutes_high = (minute_segments("minHi", V, 24, range(24, 48), after_last=bit(f"({T} - 1)", 0))
                     + minute_segments("minTop", f"({T} - 1)", 48, range(48, 60)))
     battery = f"(floor(({T} - 1) / 4096) % 128)"
     minute_slot = (group("minEventsHigh", minutes_high, turn=TURN["min"])
@@ -672,7 +703,7 @@ def next_event():
 
 
 def index_window():
-    x, y0, y1, w = C - 12, 3.0, 138.0, 24
+    x, y0, y1, w = C - 14, 3.0, C - CENTER_R + 1, 28
     lens = (f'<RoundRectangle x="{x}" y="{y0}" width="{w}" height="{y1 - y0}" cornerRadiusX="3.5" '
             f'cornerRadiusY="3.5"><Fill color="#{LENS}"/><Stroke color="#{GOLD}" thickness="1.7"/></RoundRectangle>'
             + line(C, y0 + 3, C, y1 - 3, HAIR, 0.8))
@@ -786,7 +817,7 @@ def preview_png():
     d = ImageDraw.Draw(img)
     d.ellipse([(C - FLANGE_R) * s] * 2 + [(C + FLANGE_R) * s] * 2, fill=rgba(FLANGE))
     for key, r in R.items():
-        ring(r, 2 * HW, BANDS[key])
+        ring(r, 2 * HALF[key], BANDS[key])
     d.ellipse([(C - CENTER_R) * s] * 2 + [(C + CENTER_R) * s] * 2, fill=rgba(OPAL))
     turns = {"sec": -32 * 6, "min": -(8 + 32 / 60) * 6, "hour": -(10 + 8 / 60) * 30,
              "dow": -(4 + 10.14 / 24) * SEG}
@@ -828,7 +859,7 @@ def preview_png():
     d = ImageDraw.Draw(img)
     d.text((C * s, 150 * s), "RINGS", font=font(17), fill=rgba(INK), anchor="mm")
     d.text((C * s, 285 * s), "OCT 15", font=font(14), fill=rgba(MUTED), anchor="mm")
-    x, y0, y1, w = C - 12, 3.0, 138.0, 24
+    x, y0, y1, w = C - 14, 3.0, C - CENTER_R + 1, 28
     d.rounded_rectangle([x * s, y0 * s, (x + w) * s, y1 * s], radius=7, outline=rgba(GOLD), width=3)
     d.line([(C * s, (y0 + 3) * s), (C * s, (y1 - 3) * s)], fill=rgba(HAIR), width=1)
     mask = Image.new("L", img.size, 0)

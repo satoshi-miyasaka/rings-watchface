@@ -390,11 +390,11 @@ def companion_slots():
     min_r, min_col, _ = RINGS["min"]
     week_r, week_col, _ = RINGS["week"]
 
-    # Hour ring: 12 one-hour segments in the value.
+    # Hour ring: 24 half-hour segments in the value.
     hour = "".join(
         lit_if(f"hourBit{i}", bit(V, i),
-               part_draw(f"hourSeg{i}", arc(hour_r, i * 30, (i + 1) * 30, LIT_ALPHA + hour_col)))
-        for i in range(12)
+               part_draw(f"hourSeg{i}", arc(hour_r, i * 15, (i + 1) * 15, LIT_ALPHA + hour_col)))
+        for i in range(24)
     )
     # Minute ring: 60 one-minute segments. Bits 0-23 ride on this slot's
     # target (plus one), bits 24-59 on the minute slot.
